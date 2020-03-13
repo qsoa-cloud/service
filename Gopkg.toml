@@ -29,9 +29,9 @@
   name = "go.etcd.io/etcd"
   version = "3.4.1"
 
-[[constraint]]
+[[override]]
   name = "google.golang.org/grpc"
-  version = "1.24.0"
+  version = "~1.26.0"
 
 [[constraint]]
   branch = "master"

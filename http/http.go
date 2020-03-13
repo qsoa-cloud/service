@@ -5,12 +5,18 @@ import (
 	"net/http"
 
 	"github.com/opentracing/opentracing-go"
-	tlog "github.com/opentracing/opentracing-go/log"
 
 	"gopkg.qsoa.cloud/service"
 )
 
-var handlersMux *http.ServeMux = http.NewServeMux()
+var (
+	server      httpListenAndServe
+	handlersMux *http.ServeMux = http.NewServeMux()
+)
+
+type httpListenAndServe interface {
+	ListenAndServe() error
+}
 
 func Handle(location string, handler http.Handler) {
 	handlersMux.Handle(location, handler)
@@ -19,30 +25,27 @@ func Handle(location string, handler http.Handler) {
 func Run() {
 	service.Run()
 
-	if err := http.ListenAndServe(service.GetListenAddr(), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		span, ctx := opentracing.StartSpanFromContext(r.Context(), r.Method+" "+r.URL.Path)
-		defer span.Finish()
+	if server == nil {
+		server = &http.Server{Addr: service.GetListenAddr(), Handler: http.HandlerFunc(handler)}
+	}
 
-		span.SetTag("http", nil)
-
-		span.LogFields(tlog.String("IP", r.RemoteAddr))
-		if ref := r.Referer(); ref != "" {
-			tlog.String("Referrer", ref)
-		}
-
-		if err := opentracing.GlobalTracer().Inject(span.Context(), opentracing.HTTPHeaders, opentracing.HTTPHeadersCarrier(w.Header())); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		logResponse := response{w, http.StatusOK, 0}
-		handlersMux.ServeHTTP(&logResponse, r.WithContext(ctx))
-
-		span.LogFields(
-			tlog.Int("Response body size", logResponse.bodySize),
-			tlog.Int("Response code", logResponse.statusCode),
-		)
-	})); err != nil {
+	if err := server.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func handler(w http.ResponseWriter, r *http.Request) {
+	parentSpanCtx, err := opentracing.GlobalTracer().Extract(opentracing.HTTPHeaders, opentracing.HTTPHeadersCarrier(r.Header))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	span, ctx := opentracing.StartSpanFromContext(r.Context(), r.Method+" "+r.URL.Path, opentracing.ChildOf(parentSpanCtx))
+	defer span.Finish()
+
+	span.SetTag("http", nil)
+	span.SetTag("method", r.Method)
+	span.SetTag("url", r.URL.String())
+
+	handlersMux.ServeHTTP(w, r.WithContext(ctx))
 }
