@@ -1,11 +1,15 @@
 package service
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/opentracing/opentracing-go"
 
@@ -21,6 +25,12 @@ var (
 	env        = flag.String("q_env", "", "env id")
 	service    = flag.String("q_service", "", "service id")
 	tracerFile = flag.String("q_tracer_file", "", "tracer file")
+
+	ca         = flag.String("q_ca", "", "CA certificate file")
+	serverCert = flag.String("q_server_cert", "", "Server certificate file")
+	serverPriv = flag.String("q_server_priv", "", "Server private key file")
+	clientCert = flag.String("q_client_cert", "", "Client certificate file")
+	clientPriv = flag.String("q_client_priv", "", "Client private key file")
 
 	etcdAddr     = flag.String("q_discovery_addr", "", "discovery hosts")
 	etcdUser     = flag.String("q_discovery_user", "", "discovery user")
@@ -77,4 +87,85 @@ func GetDiscovery() (string, string, string) {
 
 func GetListenAddr() string {
 	return fmt.Sprintf("%s:%d", *host, *port)
+}
+
+func GetCa() string {
+	return *ca
+}
+
+func GetServerCert() string {
+	return *serverCert
+}
+
+func GetServerPrivKey() string {
+	return *serverPriv
+}
+
+func GetClientCert() string {
+	return *clientCert
+}
+
+func GetClientPrivKey() string {
+	return *clientPriv
+}
+
+func GetServerTlsConfig() *tls.Config {
+	if *ca == "" && *serverCert == "" && *serverPriv == "" {
+		return nil
+	}
+
+	return &tls.Config{
+		ClientAuth: tls.RequireAndVerifyClientCert,
+		ClientCAs:  GetCaPool(),
+
+		VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
+			if len(verifiedChains) == 0 || len(verifiedChains[0]) == 0 {
+				return fmt.Errorf("invalid chains")
+			}
+
+			clientProject := strings.Join(verifiedChains[0][0].Subject.Organization, "|")
+			if clientProject != "qgateway" && clientProject != *project {
+				return fmt.Errorf("invalid project: %s", clientProject)
+			}
+
+			return nil
+		},
+	}
+}
+
+func GetClientTlsConfig() *tls.Config {
+	if *ca == "" && *clientCert == "" && *clientPriv == "" {
+		return nil
+	}
+
+	res := &tls.Config{
+		RootCAs: GetCaPool(),
+	}
+
+	if *clientPriv != "" && *clientCert != "" {
+		cert, err := tls.LoadX509KeyPair(*clientCert, *clientPriv)
+		if err != nil {
+			log.Fatalf("Cannot load client certifiate: %v", err)
+		}
+
+		res.Certificates = []tls.Certificate{cert}
+	}
+
+	return res
+}
+
+func GetCaPool() *x509.CertPool {
+	if *ca == "" {
+		return nil
+	}
+
+	caPem, err := ioutil.ReadFile(*ca)
+	if err != nil {
+		log.Fatalf("Cannot read CA file: %v", err)
+	}
+
+	certPool := x509.NewCertPool()
+	certPool.AppendCertsFromPEM(caPem)
+
+	return certPool
 }

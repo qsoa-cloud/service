@@ -14,14 +14,6 @@ import (
 	"gopkg.qsoa.cloud/service"
 )
 
-type myTestServer struct {
-	*httptest.Server
-}
-
-func (s myTestServer) ListenAndServe() error {
-	s.Start()
-	return nil
-}
 func TestTracing(t *testing.T) {
 	service.Run()
 
@@ -34,8 +26,6 @@ func TestTracing(t *testing.T) {
 
 	s := httptest.NewServer(http.HandlerFunc(handler))
 	defer s.Close()
-
-	server = myTestServer{s}
 
 	req, err := http.NewRequest(http.MethodGet, s.URL+"/", nil)
 	if err != nil {

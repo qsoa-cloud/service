@@ -10,7 +10,6 @@ import (
 )
 
 var (
-	server      httpListenAndServe
 	handlersMux *http.ServeMux = http.NewServeMux()
 )
 
@@ -25,12 +24,20 @@ func Handle(location string, handler http.Handler) {
 func Run() {
 	service.Run()
 
-	if server == nil {
-		server = &http.Server{Addr: service.GetListenAddr(), Handler: http.HandlerFunc(handler)}
+	server := &http.Server{
+		Addr:      service.GetListenAddr(),
+		Handler:   http.HandlerFunc(handler),
+		TLSConfig: service.GetServerTlsConfig(),
 	}
 
-	if err := server.ListenAndServe(); err != nil {
-		log.Fatal(err)
+	if service.GetServerCert() != "" || service.GetServerPrivKey() != "" {
+		if err := server.ListenAndServeTLS(service.GetServerCert(), service.GetServerPrivKey()); err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		if err := server.ListenAndServe(); err != nil {
+			log.Fatal(err)
+		}
 	}
 }
 

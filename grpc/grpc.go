@@ -8,6 +8,7 @@ import (
 
 	"github.com/opentracing/opentracing-go"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/resolver"
@@ -21,11 +22,17 @@ func init() {
 	resolver.Register(&qBuilder{})
 }
 
-func Init(opts ...grpc.ServerOption) {
-	grpcServer = grpc.NewServer(append([]grpc.ServerOption{
+func Init(addOpts ...grpc.ServerOption) {
+	opts := []grpc.ServerOption{
 		grpc.UnaryInterceptor(ServerUnaryInterceptor),
 		grpc.StreamInterceptor(ServerStreamInterceptor),
-	}, opts...)...)
+	}
+
+	if tlsConfig := service.GetServerTlsConfig(); tlsConfig != nil {
+		opts = append(opts, grpc.Creds(credentials.NewTLS(tlsConfig)))
+	}
+
+	grpcServer = grpc.NewServer(append(opts, addOpts...)...)
 }
 
 func GetServer() *grpc.Server {
@@ -52,14 +59,21 @@ func Run() {
 	}
 }
 
-func Dial(target string, opts ...grpc.DialOption) (*grpc.ClientConn, error) {
-	return grpc.Dial(target, append([]grpc.DialOption{
-		grpc.WithInsecure(),
+func Dial(target string, addOpts ...grpc.DialOption) (*grpc.ClientConn, error) {
+	opts := []grpc.DialOption{
 		grpc.WithDefaultCallOptions(
 			grpc.WaitForReady(true),
 		),
 		grpc.WithUnaryInterceptor(ClientUnaryInterceptor),
-	}, opts...)...)
+	}
+
+	if tlsConfig := service.GetClientTlsConfig(); tlsConfig != nil {
+		grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig))
+	} else {
+		opts = append(opts, grpc.WithInsecure())
+	}
+
+	return grpc.Dial(target, append(opts, addOpts...)...)
 }
 
 func ServerUnaryInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
