@@ -77,6 +77,10 @@ func Dial(target string, addOpts ...grpc.DialOption) (*grpc.ClientConn, error) {
 }
 
 func ServerUnaryInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
+	start := time.Now()
+
+	service.CountRequest(info.FullMethod)
+
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
 		md = metadata.New(nil)
@@ -94,11 +98,52 @@ func ServerUnaryInterceptor(ctx context.Context, req interface{}, info *grpc.Una
 
 	span.SetTag("grpc", nil)
 
-	return handler(opentracing.ContextWithSpan(ctx, span), req)
+	resp, err = handler(opentracing.ContextWithSpan(ctx, span), req)
+
+	if err == nil {
+		service.CountResponse(info.FullMethod, 200)
+	} else {
+		service.CountResponse(info.FullMethod, 500)
+	}
+
+	service.CountResponseTime(info.FullMethod, time.Now().Sub(start))
+
+	return resp, err
 }
 
 func ServerStreamInterceptor(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-	return handler(srv, ss)
+	start := time.Now()
+
+	service.CountRequest(info.FullMethod)
+
+	md, ok := metadata.FromIncomingContext(ss.Context())
+	if !ok {
+		md = metadata.New(nil)
+	}
+
+	sCtx, err := opentracing.GlobalTracer().Extract(
+		opentracing.HTTPHeaders, opentracing.HTTPHeadersCarrier(md),
+	)
+	if err != nil {
+		return err
+	}
+
+	span := opentracing.StartSpan(info.FullMethod, opentracing.ChildOf(sCtx))
+	defer span.Finish()
+
+	span.SetTag("grpc", nil)
+
+	err = handler(srv, ss)
+
+	if err == nil {
+		service.CountResponse(info.FullMethod, 200)
+	} else {
+		service.CountResponse(info.FullMethod, 500)
+	}
+
+	service.CountResponseTime(info.FullMethod, time.Now().Sub(start))
+
+	return err
 }
 
 func ClientUnaryInterceptor(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {

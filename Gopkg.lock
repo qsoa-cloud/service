@@ -2,6 +2,12 @@
 
 
 [[projects]]
+  name = "github.com/beorn7/perks"
+  packages = ["quantile"]
+  revision = "37c8de3658fcb183f997c4e13e8337516ab753e6"
+  version = "v1.0.1"
+
+[[projects]]
   name = "github.com/coreos/go-systemd"
   packages = ["journal"]
   revision = "2d78030078ef61b3cae27f42ad6d0e46db51b339"
@@ -38,10 +44,40 @@
   version = "v1.1.1"
 
 [[projects]]
+  name = "github.com/matttproud/golang_protobuf_extensions"
+  packages = ["pbutil"]
+  revision = "c12348ce28de40eed0136aa2b644d0ee0650e56c"
+  version = "v1.0.1"
+
+[[projects]]
   name = "github.com/opentracing/opentracing-go"
   packages = [".","log"]
   revision = "659c90643e714681897ec2521c60567dd21da733"
   version = "v1.1.0"
+
+[[projects]]
+  name = "github.com/prometheus/client_golang"
+  packages = ["prometheus","prometheus/internal"]
+  revision = "170205fb58decfd011f1550d4cfb737230d7ae4f"
+  version = "v1.1.0"
+
+[[projects]]
+  name = "github.com/prometheus/client_model"
+  packages = ["go"]
+  revision = "7bc5445566f0fe75b15de23e6b93886e982d7bf9"
+  version = "v0.2.0"
+
+[[projects]]
+  name = "github.com/prometheus/common"
+  packages = ["expfmt","internal/bitbucket.org/ww/goautoneg","model"]
+  revision = "d978bcb1309602d68bb4ba69cf3f8ed900e07308"
+  version = "v0.9.1"
+
+[[projects]]
+  name = "github.com/prometheus/procfs"
+  packages = [".","internal/fs","internal/util"]
+  revision = "46159f73e74d1cb8dc223deef9b2d049286f46b1"
+  version = "v0.0.11"
 
 [[projects]]
   name = "github.com/sony/sonyflake"
@@ -88,7 +124,7 @@
 [[projects]]
   branch = "master"
   name = "golang.org/x/sys"
-  packages = ["unix"]
+  packages = ["unix","windows"]
   revision = "5c8b2ff67527cb88b770f693cebf3799036d8bc0"
 
 [[projects]]
@@ -124,6 +160,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "8570090faaaf54770eac6cd1dae434d39652d2237dd6d716fe6430fbe2f91c51"
+  inputs-digest = "1b1f63a78c6a9ec4ef11158ec509d53de4233ecab70b882ec09bf4796a09dce0"
   solver-name = "gps-cdcl"
   solver-version = 1

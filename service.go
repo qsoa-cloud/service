@@ -8,10 +8,14 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"net"
+	"net/http"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/opentracing/opentracing-go"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"gopkg.qsoa.cloud/tracer"
 )
@@ -19,12 +23,13 @@ import (
 var (
 	version *bool = flag.Bool("q_libversion", false, "print service library version")
 
-	host       = flag.String("q_host", "localhost", "service host")
-	port       = flag.Uint("q_port", 8080, "service port")
-	project    = flag.String("q_project", "", "project id")
-	env        = flag.String("q_env", "", "env id")
-	service    = flag.String("q_service", "", "service id")
-	tracerFile = flag.String("q_tracer_file", "", "tracer file")
+	host        = flag.String("q_host", "localhost", "service host")
+	port        = flag.Uint("q_port", 8080, "service port")
+	project     = flag.String("q_project", "", "project id")
+	env         = flag.String("q_env", "", "env id")
+	service     = flag.String("q_service", "", "service id")
+	tracerFile  = flag.String("q_tracer_file", "", "tracer file")
+	metricsAddr = flag.String("q_metrics_addr", "localhost:8081", "http metrics addr")
 
 	ca         = flag.String("q_ca", "", "CA certificate file")
 	serverCert = flag.String("q_server_cert", "", "Server certificate file")
@@ -57,6 +62,21 @@ func Run() {
 	}
 
 	opentracing.SetGlobalTracer(tracer.New(tracerW))
+
+	addrParts := regexp.MustCompile(`^(?:([\w]+)://)?(.+$)`).FindStringSubmatch(*metricsAddr)
+	if len(addrParts) != 3 {
+		log.Fatalf("Invalid metrics address '%s'", *metricsAddr)
+	}
+	if addrParts[1] == "" {
+		addrParts[1] = "tcp"
+	}
+
+	metricsSock, err := net.Listen(addrParts[1], addrParts[2])
+	if err != nil {
+		log.Fatalf("Cannot listen %s: %v", *metricsAddr, err)
+	}
+
+	go http.Serve(metricsSock, promhttp.Handler())
 
 	log.Printf("Service started on %s", GetListenAddr())
 }

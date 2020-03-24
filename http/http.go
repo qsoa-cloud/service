@@ -3,6 +3,7 @@ package http
 import (
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/opentracing/opentracing-go"
 
@@ -10,11 +11,25 @@ import (
 )
 
 var (
-	handlersMux *http.ServeMux = http.NewServeMux()
+	handlersMux = http.NewServeMux()
 )
 
-type httpListenAndServe interface {
-	ListenAndServe() error
+type httpResponseWriter struct {
+	w      http.ResponseWriter
+	status int
+}
+
+func (w *httpResponseWriter) Header() http.Header {
+	return w.w.Header()
+}
+
+func (w *httpResponseWriter) Write(b []byte) (int, error) {
+	return w.w.Write(b)
+}
+
+func (w *httpResponseWriter) WriteHeader(code int) {
+	w.w.WriteHeader(code)
+	w.status = code
 }
 
 func Handle(location string, handler http.Handler) {
@@ -42,6 +57,8 @@ func Run() {
 }
 
 func handler(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+
 	parentSpanCtx, err := opentracing.GlobalTracer().Extract(opentracing.HTTPHeaders, opentracing.HTTPHeadersCarrier(r.Header))
 	if err != nil {
 		log.Fatal(err)
@@ -54,5 +71,15 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	span.SetTag("method", r.Method)
 	span.SetTag("url", r.URL.String())
 
-	handlersMux.ServeHTTP(w, r.WithContext(ctx))
+	service.CountRequest(r.URL.Path)
+
+	wrappedW := &httpResponseWriter{w: w}
+	handlersMux.ServeHTTP(wrappedW, r.WithContext(ctx))
+
+	if wrappedW.status == 0 {
+		wrappedW.status = http.StatusOK
+	}
+
+	service.CountResponse(r.URL.Path, wrappedW.status)
+	service.CountResponseTime(r.URL.Path, time.Now().Sub(start))
 }
