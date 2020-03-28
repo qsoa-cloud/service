@@ -29,7 +29,7 @@ var (
 	env         = flag.String("q_env", "", "env id")
 	service     = flag.String("q_service", "", "service id")
 	tracerFile  = flag.String("q_tracer_file", "", "tracer file")
-	metricsAddr = flag.String("q_metrics_addr", "localhost:8081", "http metrics addr")
+	metricsAddr = flag.String("q_metrics_addr", "", "http metrics addr")
 
 	ca         = flag.String("q_ca", "", "CA certificate file")
 	serverCert = flag.String("q_server_cert", "", "Server certificate file")
@@ -63,20 +63,22 @@ func Run() {
 
 	opentracing.SetGlobalTracer(tracer.New(tracerW))
 
-	addrParts := regexp.MustCompile(`^(?:([\w]+)://)?(.+$)`).FindStringSubmatch(*metricsAddr)
-	if len(addrParts) != 3 {
-		log.Fatalf("Invalid metrics address '%s'", *metricsAddr)
-	}
-	if addrParts[1] == "" {
-		addrParts[1] = "tcp"
-	}
+	if *metricsAddr != "" {
+		addrParts := regexp.MustCompile(`^(?:([\w]+)://)?(.+$)`).FindStringSubmatch(*metricsAddr)
+		if len(addrParts) != 3 {
+			log.Fatalf("Invalid metrics address '%s'", *metricsAddr)
+		}
+		if addrParts[1] == "" {
+			addrParts[1] = "tcp"
+		}
 
-	metricsSock, err := net.Listen(addrParts[1], addrParts[2])
-	if err != nil {
-		log.Fatalf("Cannot listen %s: %v", *metricsAddr, err)
-	}
+		metricsSock, err := net.Listen(addrParts[1], addrParts[2])
+		if err != nil {
+			log.Fatalf("Cannot listen %s: %v", *metricsAddr, err)
+		}
 
-	go http.Serve(metricsSock, promhttp.Handler())
+		go http.Serve(metricsSock, promhttp.Handler())
+	}
 
 	log.Printf("Service started on %s", GetListenAddr())
 }
