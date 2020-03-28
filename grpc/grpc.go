@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"crypto/tls"
 	"log"
 	"net"
 	"time"
@@ -29,6 +30,14 @@ func Init(addOpts ...grpc.ServerOption) {
 	}
 
 	if tlsConfig := service.GetServerTlsConfig(); tlsConfig != nil {
+		if service.GetServerCert() != "" || service.GetServerPrivKey() != "" {
+			cert, err := tls.LoadX509KeyPair(service.GetServerCert(), service.GetServerPrivKey())
+			if err != nil {
+				log.Fatalf("Cannot load server certificate: %v", err)
+			}
+			tlsConfig.Certificates = append(tlsConfig.Certificates, cert)
+		}
+
 		opts = append(opts, grpc.Creds(credentials.NewTLS(tlsConfig)))
 	}
 
