@@ -77,6 +77,10 @@ func Run() {
 			log.Fatalf("Cannot listen %s: %v", *metricsAddr, err)
 		}
 
+		if err := os.Chmod(addrParts[2], os.ModeSocket|0660); err != nil {
+			log.Fatalf("Cannot change socket %s permissions: %v", *metricsAddr, err)
+		}
+
 		go http.Serve(metricsSock, promhttp.Handler())
 	}
 
