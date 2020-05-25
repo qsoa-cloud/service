@@ -1,18 +1,16 @@
 package service
 
 import (
-	"crypto/tls"
-	"crypto/x509"
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -23,26 +21,22 @@ import (
 var (
 	version *bool = flag.Bool("q_libversion", false, "print service library version")
 
-	host        = flag.String("q_host", "localhost", "service host")
-	port        = flag.Uint("q_port", 8080, "service port")
-	project     = flag.String("q_project", "", "project id")
-	env         = flag.String("q_env", "", "env id")
-	service     = flag.String("q_service", "", "service id")
+	project = flag.String("q_project", "", "project id")
+	env     = flag.String("q_env", "", "env id")
+	service = flag.String("q_service", "", "service id")
+
 	tracerFile  = flag.String("q_tracer_file", "", "tracer file")
 	metricsAddr = flag.String("q_metrics_addr", "", "http metrics addr")
 
-	ca         = flag.String("q_ca", "", "CA certificate file")
-	serverCert = flag.String("q_server_cert", "", "Server certificate file")
-	serverPriv = flag.String("q_server_priv", "", "Server private key file")
-	clientCert = flag.String("q_client_cert", "", "Client certificate file")
-	clientPriv = flag.String("q_client_priv", "", "Client private key file")
-
-	etcdAddr     = flag.String("q_discovery_addr", "", "discovery hosts")
-	etcdUser     = flag.String("q_discovery_user", "", "discovery user")
-	etcdPassword = flag.String("q_discovery_password", "", "discovery user password")
+	netAddrRe = regexp.MustCompile(`^(?:([\w]+)://)?(.+$)`)
 )
 
 func Run() {
+	var httpAddr *string
+	if hasHttpHandlers {
+		httpAddr = flag.String("q_http_addr", "localhost:8080", "network type for HTTP server")
+	}
+
 	flag.Parse()
 
 	if *version {
@@ -64,35 +58,24 @@ func Run() {
 	opentracing.SetGlobalTracer(tracer.New(tracerW))
 
 	if *metricsAddr != "" {
-		addrParts := regexp.MustCompile(`^(?:([\w]+)://)?(.+$)`).FindStringSubmatch(*metricsAddr)
-		if len(addrParts) != 3 {
-			log.Fatalf("Invalid metrics address '%s'", *metricsAddr)
-		}
-		if addrParts[1] == "" {
-			addrParts[1] = "tcp"
-		}
-
-		metricsSock, err := net.Listen(addrParts[1], addrParts[2])
-		if err != nil {
-			log.Fatalf("Cannot listen %s: %v", *metricsAddr, err)
-		}
-
-		if err := os.Chmod(addrParts[2], os.ModeSocket|0660); err != nil {
-			log.Fatalf("Cannot change socket %s permissions: %v", *metricsAddr, err)
-		}
-
-		go http.Serve(metricsSock, promhttp.Handler())
+		go func() {
+			if err := http.Serve(qListen(*metricsAddr), promhttp.Handler()); err != nil {
+				log.Fatalf("Cannot serv metrics server: %v", err)
+			}
+		}()
 	}
 
-	log.Printf("Service started on %s", GetListenAddr())
-}
+	wg := &sync.WaitGroup{}
 
-func GetHost() string {
-	return *host
-}
+	if hasHttpHandlers && httpAddr != nil {
+		sNet, sAddr := splitNetAddr(*httpAddr)
+		if sNet != "unix" {
+			log.Printf("HTTP server listens on http://%s", sAddr)
+		}
+		serveHttp(qListen(*httpAddr), wg)
+	}
 
-func GetPort() uint16 {
-	return uint16(*port)
+	wg.Wait()
 }
 
 func GetProject() string {
@@ -107,91 +90,30 @@ func GetService() string {
 	return *service
 }
 
-func GetDiscovery() (string, string, string) {
-	return *etcdAddr, *etcdUser, *etcdPassword
-}
-
-func GetListenAddr() string {
-	return fmt.Sprintf("%s:%d", *host, *port)
-}
-
-func GetCa() string {
-	return *ca
-}
-
-func GetServerCert() string {
-	return *serverCert
-}
-
-func GetServerPrivKey() string {
-	return *serverPriv
-}
-
-func GetClientCert() string {
-	return *clientCert
-}
-
-func GetClientPrivKey() string {
-	return *clientPriv
-}
-
-func GetServerTlsConfig() *tls.Config {
-	if *ca == "" && *serverCert == "" && *serverPriv == "" {
-		return nil
+func splitNetAddr(addr string) (string, string) {
+	addrParts := netAddrRe.FindStringSubmatch(addr)
+	if len(addrParts) != 3 {
+		log.Fatalf("Invalid address '%s'", addr)
+	}
+	if addrParts[1] == "" {
+		addrParts[1] = "tcp"
 	}
 
-	return &tls.Config{
-		ClientAuth: tls.RequireAndVerifyClientCert,
-		ClientCAs:  GetCaPool(),
-
-		VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
-			if len(verifiedChains) == 0 || len(verifiedChains[0]) == 0 {
-				return fmt.Errorf("invalid chains")
-			}
-
-			clientProject := strings.Join(verifiedChains[0][0].Subject.Organization, "|")
-			if clientProject != "qgateway" && clientProject != *project {
-				return fmt.Errorf("invalid project: %s", clientProject)
-			}
-
-			return nil
-		},
-	}
+	return addrParts[1], addrParts[2]
 }
 
-func GetClientTlsConfig() *tls.Config {
-	if *ca == "" && *clientCert == "" && *clientPriv == "" {
-		return nil
-	}
-
-	res := &tls.Config{
-		RootCAs: GetCaPool(),
-	}
-
-	if *clientPriv != "" && *clientCert != "" {
-		cert, err := tls.LoadX509KeyPair(*clientCert, *clientPriv)
-		if err != nil {
-			log.Fatalf("Cannot load client certifiate: %v", err)
-		}
-
-		res.Certificates = []tls.Certificate{cert}
-	}
-
-	return res
-}
-
-func GetCaPool() *x509.CertPool {
-	if *ca == "" {
-		return nil
-	}
-
-	caPem, err := ioutil.ReadFile(*ca)
+func qListen(addr string) net.Listener {
+	sNet, sAddr := splitNetAddr(addr)
+	l, err := net.Listen(sNet, sAddr)
 	if err != nil {
-		log.Fatalf("Cannot read CA file: %v", err)
+		log.Fatalf("Cannot listen %s: %v", addr, err)
 	}
 
-	certPool := x509.NewCertPool()
-	certPool.AppendCertsFromPEM(caPem)
+	if strings.HasPrefix(sNet, "unix") {
+		if err := os.Chmod(sAddr, os.ModeSocket|0660); err != nil {
+			log.Fatalf("Cannot change socket %s permissions: %v", addr, err)
+		}
+	}
 
-	return certPool
+	return l
 }
