@@ -58,5 +58,7 @@ func httpWrapper(w http.ResponseWriter, r *http.Request) {
 	span, ctx := opentracing.StartSpanFromContext(r.Context(), r.Method+" "+r.URL.Path, opentracing.ChildOf(parentSpanCtx))
 	defer span.Finish()
 
+	span.SetTag("http", nil)
+
 	httpHandlersMux.ServeHTTP(w, r.WithContext(ctx))
 }

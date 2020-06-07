@@ -18,6 +18,8 @@ import (
 	"gopkg.qsoa.cloud/tracer"
 )
 
+type OnInitCallback func() error
+
 var (
 	version *bool = flag.Bool("q_libversion", false, "print service library version")
 
@@ -29,12 +31,23 @@ var (
 	metricsAddr = flag.String("q_metrics_addr", "", "http metrics addr")
 
 	netAddrRe = regexp.MustCompile(`^(?:([\w]+)://)?(.+$)`)
+
+	onInitCbs []OnInitCallback
 )
+
+func OnInit(cb OnInitCallback) {
+	onInitCbs = append(onInitCbs, cb)
+}
 
 func Run() {
 	var httpAddr *string
 	if hasHttpHandlers {
-		httpAddr = flag.String("q_http_addr", "localhost:8080", "network type for HTTP server")
+		httpAddr = flag.String("q_http_addr", "localhost:8080", "network address for HTTP server")
+	}
+
+	var grpcAddr *string
+	if grpcServer != nil {
+		grpcAddr = flag.String("q_grpc_addr", "localhost:8081", "network address for gRPC server")
 	}
 
 	flag.Parse()
@@ -65,6 +78,12 @@ func Run() {
 		}()
 	}
 
+	for _, cb := range onInitCbs {
+		if err := cb(); err != nil {
+			log.Fatalf("Init callback failed: %v", err)
+		}
+	}
+
 	wg := &sync.WaitGroup{}
 
 	if hasHttpHandlers && httpAddr != nil {
@@ -73,6 +92,14 @@ func Run() {
 			log.Printf("HTTP server listens on http://%s", sAddr)
 		}
 		serveHttp(qListen(*httpAddr), wg)
+	}
+
+	if grpcServer != nil && grpcAddr != nil {
+		sNet, sAddr := splitNetAddr(*grpcAddr)
+		if sNet != "unix" {
+			log.Printf("gRpc server listens on http://%s", sAddr)
+		}
+		serveGRpc(qListen(*grpcAddr), wg)
 	}
 
 	wg.Wait()
