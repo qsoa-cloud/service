@@ -1,35 +1,40 @@
 package main
 
 import (
+	"database/sql"
 	"log"
 
 	"gopkg.qsoa.cloud/service"
 	"gopkg.qsoa.cloud/service/example/grpc"
 	"gopkg.qsoa.cloud/service/example/grpc/pb"
 	"gopkg.qsoa.cloud/service/example/http"
-	qgrpc "gopkg.qsoa.cloud/service/grpc"
+	"gopkg.qsoa.cloud/service/qgrpc"
+	"gopkg.qsoa.cloud/service/qhttp"
+	_ "gopkg.qsoa.cloud/service/qmysql"
 )
 
 func main() {
-	// Provides HTTP service
-	service.HandleHttp("/", &http.Handler{})
+	// Prepare gRpc client
+	conn, err := qgrpc.Dial("qcloud://" + service.GetService() + "/")
+	if err != nil {
+		log.Fatalf("Cannot dial grpc: %v", err)
+	}
+	defer conn.Close()
+
+	grpcClient := pb.NewTestClient(conn)
+
+	// Prepare mysql connection
+	db, err := sql.Open("qmysql", "example_db")
+	if err != nil {
+		log.Fatalf("Cannot open mysql database: %v", err)
+	}
+	defer db.Close()
+
+	// Provide HTTP service
+	qhttp.Handle("/", http.New(grpcClient, db))
 
 	// Provide gRPC service
-	service.InitGrpcServer()
-	pb.RegisterTestServer(service.GetGrpcServer(), &grpc.Server{})
-
-	// Prepare gRPC client
-	var client pb.TestClient
-	service.OnInit(func() error {
-		conn, err := qgrpc.Dial("qcloud://example/")
-		if err != nil {
-			log.Fatalf("Cannot dial grpc: %v", err)
-		}
-
-		client = pb.NewTestClient(conn)
-
-		return nil
-	})
+	pb.RegisterTestServer(qgrpc.GetServer(), grpc.Server{})
 
 	// Run service
 	service.Run()

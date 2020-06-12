@@ -8,8 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"regexp"
-	"strings"
+	"strconv"
 	"sync"
 
 	"github.com/opentracing/opentracing-go"
@@ -18,10 +17,14 @@ import (
 	"gopkg.qsoa.cloud/tracer"
 )
 
-type OnInitCallback func() error
+type Service interface {
+	GetName() string
+	Serve(l net.Listener, wg *sync.WaitGroup)
+}
 
+// Flags
 var (
-	version *bool = flag.Bool("q_libversion", false, "print service library version")
+	version = flag.Bool("q_libversion", false, "print service library version")
 
 	project = flag.String("q_project", "", "project id")
 	env     = flag.String("q_env", "", "env id")
@@ -29,27 +32,32 @@ var (
 
 	tracerFile  = flag.String("q_tracer_file", "", "tracer file")
 	metricsAddr = flag.String("q_metrics_addr", "", "http metrics addr")
-
-	netAddrRe = regexp.MustCompile(`^(?:([\w]+)://)?(.+$)`)
-
-	onInitCbs []OnInitCallback
 )
 
-func OnInit(cb OnInitCallback) {
-	onInitCbs = append(onInitCbs, cb)
+// Internal data
+var (
+	services        = map[string]Service{}
+	servicesAddr    = map[string]*string{}
+	nextDefaultPort = 8080
+)
+
+func RegisterService(service Service) {
+	name := service.GetName()
+	if _, exists := services[name]; exists {
+		log.Fatalf("Service with name '%s' is already exists", name)
+	}
+
+	servicesAddr[name] = flag.String(
+		"q_"+name+"_addr",
+		"127.0.0.1:"+strconv.FormatInt(int64(nextDefaultPort), 10),
+		"network address for "+name+" server",
+	)
+	nextDefaultPort++
+
+	services[service.GetName()] = service
 }
 
 func Run() {
-	var httpAddr *string
-	if hasHttpHandlers {
-		httpAddr = flag.String("q_http_addr", "localhost:8080", "network address for HTTP server")
-	}
-
-	var grpcAddr *string
-	if grpcServer != nil {
-		grpcAddr = flag.String("q_grpc_addr", "localhost:8081", "network address for gRPC server")
-	}
-
 	flag.Parse()
 
 	if *version {
@@ -57,6 +65,7 @@ func Run() {
 		os.Exit(0)
 	}
 
+	// Prepare tracer
 	var tracerW io.Writer = os.Stderr
 	tracerFile := *tracerFile
 	if tracerFile != "" {
@@ -64,42 +73,40 @@ func Run() {
 		if err != nil {
 			log.Fatalf("Cannot open tracer file: %s", err.Error())
 		}
+		defer f.Close()
 
 		tracerW = f
 	}
 
 	opentracing.SetGlobalTracer(tracer.New(tracerW))
 
+	// Prepare metrics socket
 	if *metricsAddr != "" {
+		sNet, sAddr := splitNetAddr(*metricsAddr)
+		l := qListen(sNet, sAddr)
+		defer l.Close()
+
 		go func() {
-			if err := http.Serve(qListen(*metricsAddr), promhttp.Handler()); err != nil {
+			if err := http.Serve(l, promhttp.Handler()); err != nil {
 				log.Fatalf("Cannot serv metrics server: %v", err)
 			}
 		}()
 	}
 
-	for _, cb := range onInitCbs {
-		if err := cb(); err != nil {
-			log.Fatalf("Init callback failed: %v", err)
-		}
-	}
-
+	// Serve servers
 	wg := &sync.WaitGroup{}
-
-	if hasHttpHandlers && httpAddr != nil {
-		sNet, sAddr := splitNetAddr(*httpAddr)
+	for _, s := range services {
+		sNet, sAddr := splitNetAddr(*servicesAddr[s.GetName()])
 		if sNet != "unix" {
-			log.Printf("HTTP server listens on http://%s", sAddr)
+			log.Printf(s.GetName()+" server listens on %s", sAddr)
 		}
-		serveHttp(qListen(*httpAddr), wg)
-	}
 
-	if grpcServer != nil && grpcAddr != nil {
-		sNet, sAddr := splitNetAddr(*grpcAddr)
-		if sNet != "unix" {
-			log.Printf("gRpc server listens on http://%s", sAddr)
-		}
-		serveGRpc(qListen(*grpcAddr), wg)
+		l := qListen(sNet, sAddr)
+		//noinspection ALL
+		defer l.Close()
+
+		wg.Add(1)
+		go s.Serve(l, wg)
 	}
 
 	wg.Wait()
@@ -115,32 +122,4 @@ func GetEnv() string {
 
 func GetService() string {
 	return *service
-}
-
-func splitNetAddr(addr string) (string, string) {
-	addrParts := netAddrRe.FindStringSubmatch(addr)
-	if len(addrParts) != 3 {
-		log.Fatalf("Invalid address '%s'", addr)
-	}
-	if addrParts[1] == "" {
-		addrParts[1] = "tcp"
-	}
-
-	return addrParts[1], addrParts[2]
-}
-
-func qListen(addr string) net.Listener {
-	sNet, sAddr := splitNetAddr(addr)
-	l, err := net.Listen(sNet, sAddr)
-	if err != nil {
-		log.Fatalf("Cannot listen %s: %v", addr, err)
-	}
-
-	if strings.HasPrefix(sNet, "unix") {
-		if err := os.Chmod(sAddr, os.ModeSocket|0660); err != nil {
-			log.Fatalf("Cannot change socket %s permissions: %v", addr, err)
-		}
-	}
-
-	return l
 }

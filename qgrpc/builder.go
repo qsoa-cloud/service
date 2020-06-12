@@ -1,4 +1,4 @@
-package grpc
+package qgrpc
 
 import (
 	"flag"
@@ -12,6 +12,7 @@ type qBuilder struct{}
 var grpcProxy = flag.String("q_grpc_proxy", "", "gRPC proxy address")
 
 func (b *qBuilder) Build(target resolver.Target, cc resolver.ClientConn, opts resolver.BuildOptions) (resolver.Resolver, error) {
+	flag.Parse()
 	if *grpcProxy == "" {
 		return nil, fmt.Errorf("no gRpc proxy was provided by -q_grpc_proxy argument")
 	}
