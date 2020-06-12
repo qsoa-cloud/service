@@ -113,13 +113,25 @@ func Run() {
 }
 
 func GetProject() string {
+	if !flag.Parsed() {
+		flag.Parse()
+	}
+
 	return *project
 }
 
 func GetEnv() string {
+	if !flag.Parsed() {
+		flag.Parse()
+	}
+
 	return *env
 }
 
 func GetService() string {
+	if !flag.Parsed() {
+		flag.Parse()
+	}
+
 	return *service
 }
