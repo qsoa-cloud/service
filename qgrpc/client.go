@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/resolver"
@@ -31,14 +32,26 @@ func ClientUnaryInterceptor(ctx context.Context, method string, req, reply inter
 	span, ctx := opentracing.StartSpanFromContext(ctx, fmt.Sprintf("Invoke %s from %s", method, cc.Target()))
 	defer span.Finish()
 
-	return invoker(ctxWithQData(ctx, cc), method, req, reply, cc, opts...)
+	err := invoker(ctxWithQData(ctx, cc), method, req, reply, cc, opts...)
+	if err != nil {
+		span.SetTag("error", nil)
+		span.LogFields(log.Error(err))
+	}
+
+	return err
 }
 
 func ClientStreamInterceptor(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, fmt.Sprintf("Invoke %s from %s", method, cc.Target()))
 	defer span.Finish()
 
-	return streamer(ctxWithQData(ctx, cc), desc, cc, method, opts...)
+	stream, err := streamer(ctxWithQData(ctx, cc), desc, cc, method, opts...)
+	if err != nil {
+		span.SetTag("error", nil)
+		span.LogFields(log.Error(err))
+	}
+
+	return stream, err
 }
 
 func ctxWithQData(ctx context.Context, cc *grpc.ClientConn) context.Context {
