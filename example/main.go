@@ -1,21 +1,3 @@
-# qSOA cloud service libraries
-
-## Install
-
-### Base library
-`go get -u gopkg.qsoa.cloud/service`
-
-### Library for gRPC services
-`go get -u gopkg.qsoa.cloud/service/qgrpc`
-
-### Library for HTTP services
-`go get -u gopkg.qsoa.cloud/service/qhttp`
-
-### Cloud MySql client
-`go get -u gopkg.qsoa.cloud/service/qmysql`
-
-## Usage
-```go
 package main
 
 import (
@@ -57,5 +39,3 @@ func main() {
 	// Run service
 	service.Run()
 }
-
-```
