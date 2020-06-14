@@ -24,11 +24,12 @@ type Service interface {
 
 // Flags
 var (
-	version = flag.Bool("q_libversion", false, "print service library version")
+	libVersion = flag.Bool("q_libversion", false, "print service library version")
 
 	project = flag.String("q_project", "", "project id")
 	env     = flag.String("q_env", "", "env id")
 	service = flag.String("q_service", "", "service id")
+	version = flag.String("q_version", "", "service version")
 
 	tracerFile  = flag.String("q_tracer_file", "", "tracer file")
 	metricsAddr = flag.String("q_metrics_addr", "", "http metrics addr")
@@ -60,7 +61,7 @@ func RegisterService(service Service) {
 func Run() {
 	flag.Parse()
 
-	if *version {
+	if *libVersion {
 		fmt.Println("1.0")
 		os.Exit(0)
 	}
@@ -129,6 +130,14 @@ func GetEnv() string {
 }
 
 func GetService() string {
+	if !flag.Parsed() {
+		flag.Parse()
+	}
+
+	return *service
+}
+
+func GetVersion() string {
 	if !flag.Parsed() {
 		flag.Parse()
 	}
