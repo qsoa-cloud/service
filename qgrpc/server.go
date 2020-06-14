@@ -11,6 +11,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/reflection"
 
 	"gopkg.qsoa.cloud/service"
 )
@@ -37,6 +38,9 @@ func (s *qGRpc) GetName() string {
 }
 
 func (s *qGRpc) Serve(l net.Listener, wg *sync.WaitGroup) {
+	// Add reflection service
+	reflection.Register(s.server)
+
 	sigC := make(chan os.Signal, 1)
 	signal.Notify(sigC, os.Interrupt)
 
