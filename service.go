@@ -52,8 +52,6 @@ func RegisterService(service Service) {
 		"network address for "+name+" server",
 	)
 	nextDefaultPort++
-
-	services[service.GetName()] = service
 }
 
 func RegisterClientService(service Service) {
@@ -61,6 +59,8 @@ func RegisterClientService(service Service) {
 	if _, exists := services[name]; exists {
 		log.Fatalf("Service with name '%s' is already exists", name)
 	}
+
+	services[name] = service
 }
 
 func Run() {
