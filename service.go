@@ -43,11 +43,9 @@ var (
 )
 
 func RegisterService(service Service) {
-	name := service.GetName()
-	if _, exists := services[name]; exists {
-		log.Fatalf("Service with name '%s' is already exists", name)
-	}
+	RegisterClientService(service)
 
+	name := service.GetName()
 	servicesAddr[name] = flag.String(
 		"q_"+name+"_addr",
 		"127.0.0.1:"+strconv.FormatInt(int64(nextDefaultPort), 10),
@@ -56,6 +54,13 @@ func RegisterService(service Service) {
 	nextDefaultPort++
 
 	services[service.GetName()] = service
+}
+
+func RegisterClientService(service Service) {
+	name := service.GetName()
+	if _, exists := services[name]; exists {
+		log.Fatalf("Service with name '%s' is already exists", name)
+	}
 }
 
 func Run() {
@@ -97,14 +102,18 @@ func Run() {
 	// Serve servers
 	wg := &sync.WaitGroup{}
 	for _, s := range services {
-		sNet, sAddr := splitNetAddr(*servicesAddr[s.GetName()])
-		if sNet != "unix" {
-			log.Printf(s.GetName()+" server listens on %s", sAddr)
-		}
+		sAddr, exists := servicesAddr[s.GetName()]
+		var l net.Listener
+		if exists {
+			sNet, sAddr := splitNetAddr(*sAddr)
+			if sNet != "unix" {
+				log.Printf(s.GetName()+" server listens on %s", sAddr)
+			}
 
-		l := qListen(sNet, sAddr)
-		//noinspection ALL
-		defer l.Close()
+			l = qListen(sNet, sAddr)
+			//noinspection ALL
+			defer l.Close()
+		}
 
 		wg.Add(1)
 		go s.Serve(l, wg)
