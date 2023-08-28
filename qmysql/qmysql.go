@@ -1,4 +1,4 @@
-//go:generate protoc -I internal/pb --go_out=plugins=grpc:internal/pb internal/pb/qmysql.proto
+//go:generate protoc -I internal/pb --go_out=internal/pb --go-grpc_out=internal/pb internal/pb/qmysql.proto
 package qmysql
 
 import (

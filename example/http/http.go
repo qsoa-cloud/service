@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"gopkg.qsoa.cloud/service/example/grpc/pb"
+	"example/grpc/pb"
 )
 
 type handler struct {

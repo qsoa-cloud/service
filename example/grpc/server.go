@@ -1,4 +1,4 @@
-//go:generate protoc -I pb --go_out=plugins=grpc:pb pb/service.proto
+//go:generate protoc -I pb --go_out=pb --go-grpc_out=pb pb/service.proto
 package grpc
 
 import (
@@ -7,10 +7,12 @@ import (
 
 	"google.golang.org/grpc/status"
 
-	"gopkg.qsoa.cloud/service/example/grpc/pb"
+	"example/grpc/pb"
 )
 
-type Server struct{}
+type Server struct {
+	pb.UnimplementedTestServer
+}
 
 func (Server) Sum(ctx context.Context, req *pb.SumReq) (*pb.SumResp, error) {
 	return &pb.SumResp{Sum: req.N1 + req.N2}, nil
