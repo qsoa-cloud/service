@@ -37,14 +37,23 @@ func (f *Dfs) OpenFile(ctx context.Context, name string, flag int) (*DfsFile, er
 			Filename: name,
 			Flag:     int64(flag),
 		}}}); err != nil {
+		// Close stream
+		fileClient.CloseSend()
+		fileClient.Recv()
 		return nil, FileErrorFromGrpc(err)
 	}
 
 	resp, err := fileClient.Recv()
 	if err != nil {
+		// Close stream
+		fileClient.CloseSend()
+		fileClient.Recv()
 		return nil, FileErrorFromGrpc(err)
 	}
 	if err := resp.GetOpen().Error; err != nil {
+		// Close stream
+		fileClient.CloseSend()
+		fileClient.Recv()
 		return nil, FileErrorFromPb(err)
 	}
 

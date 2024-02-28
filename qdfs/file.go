@@ -20,6 +20,12 @@ func NewFile(client dfspb.Dfs_FileClient) *DfsFile {
 }
 
 func (f *DfsFile) Close() error {
+	defer func() {
+		// Close stream
+		f.client.CloseSend()
+		f.client.Recv()
+	}()
+
 	if err := f.client.Send(&dfspb.FileReq{Msg: &dfspb.FileReq_Close_{Close: &dfspb.FileReq_Close{}}}); err != nil {
 		return err
 	}
@@ -32,7 +38,7 @@ func (f *DfsFile) Close() error {
 		return FileErrorFromPb(err)
 	}
 
-	return f.client.CloseSend()
+	return nil
 }
 
 func (f *DfsFile) Seek(offset int64, whence int) (int64, error) {
