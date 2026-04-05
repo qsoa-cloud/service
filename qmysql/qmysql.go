@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	"gopkg.qsoa.cloud/service/qmysql/internal/pb"
 )
@@ -31,7 +32,7 @@ func (d *qDriver) Open(name string) (driver.Conn, error) {
 	if d.client == nil {
 		flag.Parse()
 
-		cc, err := grpc.Dial(*addr, grpc.WithInsecure())
+		cc, err := grpc.NewClient(*addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
 			return nil, fmt.Errorf("cannot connect to discovery: %v", err)
 		}

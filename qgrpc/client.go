@@ -7,6 +7,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/log"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/resolver"
 )
@@ -17,7 +18,7 @@ func init() {
 
 func Dial(target string, addOpts ...grpc.DialOption) (*grpc.ClientConn, error) {
 	opts := []grpc.DialOption{
-		grpc.WithInsecure(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithDefaultCallOptions(
 			grpc.WaitForReady(true),
 		),
@@ -25,7 +26,7 @@ func Dial(target string, addOpts ...grpc.DialOption) (*grpc.ClientConn, error) {
 		grpc.WithStreamInterceptor(ClientStreamInterceptor),
 	}
 
-	return grpc.Dial(target, append(opts, addOpts...)...)
+	return grpc.NewClient(target, append(opts, addOpts...)...)
 }
 
 func ClientUnaryInterceptor(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
