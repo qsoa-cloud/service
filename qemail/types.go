@@ -3,6 +3,12 @@ package qemail
 import "time"
 
 // Message is the send payload for Mailbox.Send (From is taken from the Mailbox).
+// Header is a custom email header key-value pair.
+type Header struct {
+	Key   string
+	Value string
+}
+
 type Message struct {
 	To          []string
 	Cc          []string
@@ -11,6 +17,7 @@ type Message struct {
 	TextBody    string
 	HtmlBody    string
 	Attachments []Attachment
+	Headers     []Header
 }
 
 // MessageSummary holds key fields for displaying a message in a list view.

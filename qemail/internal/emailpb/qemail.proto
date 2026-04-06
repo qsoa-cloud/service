@@ -30,12 +30,18 @@ message SendEmailReq {
   string html_body = 6;
   repeated Attachment attachments = 7;
   repeated string bcc = 8;
+  repeated Header headers = 9;
 }
 
 message Attachment {
   string filename = 1;
   string content_type = 2;
   bytes data = 3;
+}
+
+message Header {
+  string key = 1;
+  string value = 2;
 }
 
 message SendEmailResp {

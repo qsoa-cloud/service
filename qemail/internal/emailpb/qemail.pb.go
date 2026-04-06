@@ -120,6 +120,7 @@ type SendEmailReq struct {
 	HtmlBody      string                 `protobuf:"bytes,6,opt,name=html_body,json=htmlBody,proto3" json:"html_body,omitempty"`
 	Attachments   []*Attachment          `protobuf:"bytes,7,rep,name=attachments,proto3" json:"attachments,omitempty"`
 	Bcc           []string               `protobuf:"bytes,8,rep,name=bcc,proto3" json:"bcc,omitempty"`
+	Headers       []*Header              `protobuf:"bytes,9,rep,name=headers,proto3" json:"headers,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -210,6 +211,13 @@ func (x *SendEmailReq) GetBcc() []string {
 	return nil
 }
 
+func (x *SendEmailReq) GetHeaders() []*Header {
+	if x != nil {
+		return x.Headers
+	}
+	return nil
+}
+
 type Attachment struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Filename      string                 `protobuf:"bytes,1,opt,name=filename,proto3" json:"filename,omitempty"`
@@ -270,6 +278,58 @@ func (x *Attachment) GetData() []byte {
 	return nil
 }
 
+type Header struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	Value         string                 `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Header) Reset() {
+	*x = Header{}
+	mi := &file_qemail_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Header) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Header) ProtoMessage() {}
+
+func (x *Header) ProtoReflect() protoreflect.Message {
+	mi := &file_qemail_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Header.ProtoReflect.Descriptor instead.
+func (*Header) Descriptor() ([]byte, []int) {
+	return file_qemail_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *Header) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *Header) GetValue() string {
+	if x != nil {
+		return x.Value
+	}
+	return ""
+}
+
 type SendEmailResp struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	MessageId     string                 `protobuf:"bytes,1,opt,name=message_id,json=messageId,proto3" json:"message_id,omitempty"`
@@ -279,7 +339,7 @@ type SendEmailResp struct {
 
 func (x *SendEmailResp) Reset() {
 	*x = SendEmailResp{}
-	mi := &file_qemail_proto_msgTypes[4]
+	mi := &file_qemail_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -291,7 +351,7 @@ func (x *SendEmailResp) String() string {
 func (*SendEmailResp) ProtoMessage() {}
 
 func (x *SendEmailResp) ProtoReflect() protoreflect.Message {
-	mi := &file_qemail_proto_msgTypes[4]
+	mi := &file_qemail_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -304,7 +364,7 @@ func (x *SendEmailResp) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendEmailResp.ProtoReflect.Descriptor instead.
 func (*SendEmailResp) Descriptor() ([]byte, []int) {
-	return file_qemail_proto_rawDescGZIP(), []int{4}
+	return file_qemail_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *SendEmailResp) GetMessageId() string {
@@ -326,7 +386,7 @@ type ListMessagesReq struct {
 
 func (x *ListMessagesReq) Reset() {
 	*x = ListMessagesReq{}
-	mi := &file_qemail_proto_msgTypes[5]
+	mi := &file_qemail_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -338,7 +398,7 @@ func (x *ListMessagesReq) String() string {
 func (*ListMessagesReq) ProtoMessage() {}
 
 func (x *ListMessagesReq) ProtoReflect() protoreflect.Message {
-	mi := &file_qemail_proto_msgTypes[5]
+	mi := &file_qemail_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -351,7 +411,7 @@ func (x *ListMessagesReq) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListMessagesReq.ProtoReflect.Descriptor instead.
 func (*ListMessagesReq) Descriptor() ([]byte, []int) {
-	return file_qemail_proto_rawDescGZIP(), []int{5}
+	return file_qemail_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ListMessagesReq) GetMailboxId() uint64 {
@@ -392,7 +452,7 @@ type ListMessagesResp struct {
 
 func (x *ListMessagesResp) Reset() {
 	*x = ListMessagesResp{}
-	mi := &file_qemail_proto_msgTypes[6]
+	mi := &file_qemail_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -404,7 +464,7 @@ func (x *ListMessagesResp) String() string {
 func (*ListMessagesResp) ProtoMessage() {}
 
 func (x *ListMessagesResp) ProtoReflect() protoreflect.Message {
-	mi := &file_qemail_proto_msgTypes[6]
+	mi := &file_qemail_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -417,7 +477,7 @@ func (x *ListMessagesResp) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListMessagesResp.ProtoReflect.Descriptor instead.
 func (*ListMessagesResp) Descriptor() ([]byte, []int) {
-	return file_qemail_proto_rawDescGZIP(), []int{6}
+	return file_qemail_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ListMessagesResp) GetMessages() []*MessageSummary {
@@ -450,7 +510,7 @@ type MessageSummary struct {
 
 func (x *MessageSummary) Reset() {
 	*x = MessageSummary{}
-	mi := &file_qemail_proto_msgTypes[7]
+	mi := &file_qemail_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -462,7 +522,7 @@ func (x *MessageSummary) String() string {
 func (*MessageSummary) ProtoMessage() {}
 
 func (x *MessageSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_qemail_proto_msgTypes[7]
+	mi := &file_qemail_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -475,7 +535,7 @@ func (x *MessageSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MessageSummary.ProtoReflect.Descriptor instead.
 func (*MessageSummary) Descriptor() ([]byte, []int) {
-	return file_qemail_proto_rawDescGZIP(), []int{7}
+	return file_qemail_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *MessageSummary) GetUid() string {
@@ -545,7 +605,7 @@ type GetMessageReq struct {
 
 func (x *GetMessageReq) Reset() {
 	*x = GetMessageReq{}
-	mi := &file_qemail_proto_msgTypes[8]
+	mi := &file_qemail_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -557,7 +617,7 @@ func (x *GetMessageReq) String() string {
 func (*GetMessageReq) ProtoMessage() {}
 
 func (x *GetMessageReq) ProtoReflect() protoreflect.Message {
-	mi := &file_qemail_proto_msgTypes[8]
+	mi := &file_qemail_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -570,7 +630,7 @@ func (x *GetMessageReq) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMessageReq.ProtoReflect.Descriptor instead.
 func (*GetMessageReq) Descriptor() ([]byte, []int) {
-	return file_qemail_proto_rawDescGZIP(), []int{8}
+	return file_qemail_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *GetMessageReq) GetMailboxId() uint64 {
@@ -611,7 +671,7 @@ type GetMessageResp struct {
 
 func (x *GetMessageResp) Reset() {
 	*x = GetMessageResp{}
-	mi := &file_qemail_proto_msgTypes[9]
+	mi := &file_qemail_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -623,7 +683,7 @@ func (x *GetMessageResp) String() string {
 func (*GetMessageResp) ProtoMessage() {}
 
 func (x *GetMessageResp) ProtoReflect() protoreflect.Message {
-	mi := &file_qemail_proto_msgTypes[9]
+	mi := &file_qemail_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -636,7 +696,7 @@ func (x *GetMessageResp) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMessageResp.ProtoReflect.Descriptor instead.
 func (*GetMessageResp) Descriptor() ([]byte, []int) {
-	return file_qemail_proto_rawDescGZIP(), []int{9}
+	return file_qemail_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *GetMessageResp) GetFrom() string {
@@ -713,7 +773,7 @@ type DeleteMessageReq struct {
 
 func (x *DeleteMessageReq) Reset() {
 	*x = DeleteMessageReq{}
-	mi := &file_qemail_proto_msgTypes[10]
+	mi := &file_qemail_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -725,7 +785,7 @@ func (x *DeleteMessageReq) String() string {
 func (*DeleteMessageReq) ProtoMessage() {}
 
 func (x *DeleteMessageReq) ProtoReflect() protoreflect.Message {
-	mi := &file_qemail_proto_msgTypes[10]
+	mi := &file_qemail_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -738,7 +798,7 @@ func (x *DeleteMessageReq) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteMessageReq.ProtoReflect.Descriptor instead.
 func (*DeleteMessageReq) Descriptor() ([]byte, []int) {
-	return file_qemail_proto_rawDescGZIP(), []int{10}
+	return file_qemail_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *DeleteMessageReq) GetMailboxId() uint64 {
@@ -773,7 +833,7 @@ type MoveMessageReq struct {
 
 func (x *MoveMessageReq) Reset() {
 	*x = MoveMessageReq{}
-	mi := &file_qemail_proto_msgTypes[11]
+	mi := &file_qemail_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -785,7 +845,7 @@ func (x *MoveMessageReq) String() string {
 func (*MoveMessageReq) ProtoMessage() {}
 
 func (x *MoveMessageReq) ProtoReflect() protoreflect.Message {
-	mi := &file_qemail_proto_msgTypes[11]
+	mi := &file_qemail_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -798,7 +858,7 @@ func (x *MoveMessageReq) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MoveMessageReq.ProtoReflect.Descriptor instead.
 func (*MoveMessageReq) Descriptor() ([]byte, []int) {
-	return file_qemail_proto_rawDescGZIP(), []int{11}
+	return file_qemail_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *MoveMessageReq) GetMailboxId() uint64 {
@@ -831,7 +891,7 @@ const file_qemail_proto_rawDesc = "" +
 	"\aaddress\x18\x01 \x01(\tR\aaddress\"3\n" +
 	"\x12ResolveMailboxResp\x12\x1d\n" +
 	"\n" +
-	"mailbox_id\x18\x01 \x01(\x04R\tmailboxId\"\xe2\x01\n" +
+	"mailbox_id\x18\x01 \x01(\x04R\tmailboxId\"\x85\x02\n" +
 	"\fSendEmailReq\x12\x1d\n" +
 	"\n" +
 	"mailbox_id\x18\x01 \x01(\x04R\tmailboxId\x12\x0e\n" +
@@ -841,12 +901,16 @@ const file_qemail_proto_rawDesc = "" +
 	"\ttext_body\x18\x05 \x01(\tR\btextBody\x12\x1b\n" +
 	"\thtml_body\x18\x06 \x01(\tR\bhtmlBody\x12-\n" +
 	"\vattachments\x18\a \x03(\v2\v.AttachmentR\vattachments\x12\x10\n" +
-	"\x03bcc\x18\b \x03(\tR\x03bcc\"_\n" +
+	"\x03bcc\x18\b \x03(\tR\x03bcc\x12!\n" +
+	"\aheaders\x18\t \x03(\v2\a.HeaderR\aheaders\"_\n" +
 	"\n" +
 	"Attachment\x12\x1a\n" +
 	"\bfilename\x18\x01 \x01(\tR\bfilename\x12!\n" +
 	"\fcontent_type\x18\x02 \x01(\tR\vcontentType\x12\x12\n" +
-	"\x04data\x18\x03 \x01(\fR\x04data\".\n" +
+	"\x04data\x18\x03 \x01(\fR\x04data\"0\n" +
+	"\x06Header\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value\".\n" +
 	"\rSendEmailResp\x12\x1d\n" +
 	"\n" +
 	"message_id\x18\x01 \x01(\tR\tmessageId\"v\n" +
@@ -915,43 +979,45 @@ func file_qemail_proto_rawDescGZIP() []byte {
 	return file_qemail_proto_rawDescData
 }
 
-var file_qemail_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_qemail_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_qemail_proto_goTypes = []any{
 	(*ResolveMailboxReq)(nil),  // 0: ResolveMailboxReq
 	(*ResolveMailboxResp)(nil), // 1: ResolveMailboxResp
 	(*SendEmailReq)(nil),       // 2: SendEmailReq
 	(*Attachment)(nil),         // 3: Attachment
-	(*SendEmailResp)(nil),      // 4: SendEmailResp
-	(*ListMessagesReq)(nil),    // 5: ListMessagesReq
-	(*ListMessagesResp)(nil),   // 6: ListMessagesResp
-	(*MessageSummary)(nil),     // 7: MessageSummary
-	(*GetMessageReq)(nil),      // 8: GetMessageReq
-	(*GetMessageResp)(nil),     // 9: GetMessageResp
-	(*DeleteMessageReq)(nil),   // 10: DeleteMessageReq
-	(*MoveMessageReq)(nil),     // 11: MoveMessageReq
-	(*emptypb.Empty)(nil),      // 12: google.protobuf.Empty
+	(*Header)(nil),             // 4: Header
+	(*SendEmailResp)(nil),      // 5: SendEmailResp
+	(*ListMessagesReq)(nil),    // 6: ListMessagesReq
+	(*ListMessagesResp)(nil),   // 7: ListMessagesResp
+	(*MessageSummary)(nil),     // 8: MessageSummary
+	(*GetMessageReq)(nil),      // 9: GetMessageReq
+	(*GetMessageResp)(nil),     // 10: GetMessageResp
+	(*DeleteMessageReq)(nil),   // 11: DeleteMessageReq
+	(*MoveMessageReq)(nil),     // 12: MoveMessageReq
+	(*emptypb.Empty)(nil),      // 13: google.protobuf.Empty
 }
 var file_qemail_proto_depIdxs = []int32{
 	3,  // 0: SendEmailReq.attachments:type_name -> Attachment
-	7,  // 1: ListMessagesResp.messages:type_name -> MessageSummary
-	3,  // 2: GetMessageResp.attachments:type_name -> Attachment
-	0,  // 3: QEmail.ResolveMailbox:input_type -> ResolveMailboxReq
-	2,  // 4: QEmail.SendEmail:input_type -> SendEmailReq
-	5,  // 5: QEmail.ListMessages:input_type -> ListMessagesReq
-	8,  // 6: QEmail.GetMessage:input_type -> GetMessageReq
-	10, // 7: QEmail.DeleteMessage:input_type -> DeleteMessageReq
-	11, // 8: QEmail.MoveMessage:input_type -> MoveMessageReq
-	1,  // 9: QEmail.ResolveMailbox:output_type -> ResolveMailboxResp
-	4,  // 10: QEmail.SendEmail:output_type -> SendEmailResp
-	6,  // 11: QEmail.ListMessages:output_type -> ListMessagesResp
-	9,  // 12: QEmail.GetMessage:output_type -> GetMessageResp
-	12, // 13: QEmail.DeleteMessage:output_type -> google.protobuf.Empty
-	12, // 14: QEmail.MoveMessage:output_type -> google.protobuf.Empty
-	9,  // [9:15] is the sub-list for method output_type
-	3,  // [3:9] is the sub-list for method input_type
-	3,  // [3:3] is the sub-list for extension type_name
-	3,  // [3:3] is the sub-list for extension extendee
-	0,  // [0:3] is the sub-list for field type_name
+	4,  // 1: SendEmailReq.headers:type_name -> Header
+	8,  // 2: ListMessagesResp.messages:type_name -> MessageSummary
+	3,  // 3: GetMessageResp.attachments:type_name -> Attachment
+	0,  // 4: QEmail.ResolveMailbox:input_type -> ResolveMailboxReq
+	2,  // 5: QEmail.SendEmail:input_type -> SendEmailReq
+	6,  // 6: QEmail.ListMessages:input_type -> ListMessagesReq
+	9,  // 7: QEmail.GetMessage:input_type -> GetMessageReq
+	11, // 8: QEmail.DeleteMessage:input_type -> DeleteMessageReq
+	12, // 9: QEmail.MoveMessage:input_type -> MoveMessageReq
+	1,  // 10: QEmail.ResolveMailbox:output_type -> ResolveMailboxResp
+	5,  // 11: QEmail.SendEmail:output_type -> SendEmailResp
+	7,  // 12: QEmail.ListMessages:output_type -> ListMessagesResp
+	10, // 13: QEmail.GetMessage:output_type -> GetMessageResp
+	13, // 14: QEmail.DeleteMessage:output_type -> google.protobuf.Empty
+	13, // 15: QEmail.MoveMessage:output_type -> google.protobuf.Empty
+	10, // [10:16] is the sub-list for method output_type
+	4,  // [4:10] is the sub-list for method input_type
+	4,  // [4:4] is the sub-list for extension type_name
+	4,  // [4:4] is the sub-list for extension extendee
+	0,  // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_qemail_proto_init() }
@@ -965,7 +1031,7 @@ func file_qemail_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_qemail_proto_rawDesc), len(file_qemail_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   12,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

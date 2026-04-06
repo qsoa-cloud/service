@@ -26,6 +26,11 @@ func (m *Mailbox) Send(ctx context.Context, msg Message) (string, error) {
 		}
 	}
 
+	headers := make([]*emailpb.Header, len(msg.Headers))
+	for i, h := range msg.Headers {
+		headers[i] = &emailpb.Header{Key: h.Key, Value: h.Value}
+	}
+
 	resp, err := m.client.SendEmail(ctx, &emailpb.SendEmailReq{
 		MailboxId:   m.mailboxID,
 		To:          msg.To,
@@ -35,6 +40,7 @@ func (m *Mailbox) Send(ctx context.Context, msg Message) (string, error) {
 		TextBody:    msg.TextBody,
 		HtmlBody:    msg.HtmlBody,
 		Attachments: attachments,
+		Headers:     headers,
 	})
 	if err != nil {
 		return "", fmt.Errorf("cannot send email: %v", err)
