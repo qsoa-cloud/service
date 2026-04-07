@@ -10,6 +10,7 @@ type Header struct {
 }
 
 type Message struct {
+	FromName    string
 	To          []string
 	Cc          []string
 	Bcc         []string

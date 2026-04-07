@@ -41,6 +41,7 @@ func (m *Mailbox) Send(ctx context.Context, msg Message) (string, error) {
 		HtmlBody:    msg.HtmlBody,
 		Attachments: attachments,
 		Headers:     headers,
+		FromName:    msg.FromName,
 	})
 	if err != nil {
 		return "", fmt.Errorf("cannot send email: %v", err)
@@ -71,7 +72,7 @@ func (m *Mailbox) ListMessages(ctx context.Context, folder string, offset, limit
 			Date:    time.Unix(msg.Date, 0),
 			Seen:    msg.Seen,
 			Flagged: msg.Flagged,
-			Size:    msg.Size,
+			Size:    msg.Size_,
 		}
 	}
 

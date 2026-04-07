@@ -31,6 +31,7 @@ message SendEmailReq {
   repeated Attachment attachments = 7;
   repeated string bcc = 8;
   repeated Header headers = 9;
+  string from_name = 10;
 }
 
 message Attachment {
