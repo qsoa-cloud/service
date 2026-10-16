@@ -1,4 +1,4 @@
-//go:generate protoc -I internal/dfspb --go_out=internal/dfspb --go-grpc_out=internal/dfspb internal/dfspb/dfs.proto
+//go:generate protoc -I internal/dfspb --gogofaster_out=plugins=grpc:internal/dfspb internal/dfspb/dfs.proto
 package qdfs
 
 import (

@@ -5,9 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-
+	"gopkg.qsoa.cloud/service/internal/qconn"
 	"gopkg.qsoa.cloud/service/qdfs/internal/dfspb"
 )
 
@@ -33,7 +31,7 @@ func getDfsClient() (dfspb.DfsClient, error) {
 	if dfsClient == nil {
 		flag.Parse()
 
-		cc, err := grpc.NewClient(*sockAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		cc, err := qconn.Dial(*sockAddr)
 		if err != nil {
 			return nil, fmt.Errorf("cannot connect to dfs server: %v", err)
 		}

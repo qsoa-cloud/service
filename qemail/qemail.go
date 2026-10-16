@@ -1,3 +1,4 @@
+//go:generate protoc -I internal/emailpb --gogofaster_out=plugins=grpc:internal/emailpb internal/emailpb/qemail.proto
 package qemail
 
 import (
@@ -6,9 +7,7 @@ import (
 	"fmt"
 	"sync"
 
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-
+	"gopkg.qsoa.cloud/service/internal/qconn"
 	"gopkg.qsoa.cloud/service/qemail/internal/emailpb"
 )
 
@@ -43,7 +42,7 @@ func getEmailClient() (emailpb.QEmailClient, error) {
 	if emailClient == nil {
 		flag.Parse()
 
-		cc, err := grpc.NewClient(*sockAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		cc, err := qconn.Dial(*sockAddr)
 		if err != nil {
 			return nil, fmt.Errorf("cannot connect to email server: %v", err)
 		}

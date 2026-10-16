@@ -9,6 +9,7 @@ require (
 	github.com/prometheus/client_golang v1.23.2
 	google.golang.org/grpc v1.84.0
 	google.golang.org/protobuf v1.36.11
+	gopkg.qsoa.cloud/grpccodec v0.1.0
 	gopkg.qsoa.cloud/tracer v1.0.0
 )
 
@@ -27,3 +28,5 @@ require (
 	golang.org/x/text v0.40.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260706201446-f0a921348800 // indirect
 )
+
+replace gopkg.qsoa.cloud/grpccodec => ../grpccodec

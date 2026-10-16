@@ -1,4 +1,4 @@
-//go:generate protoc -I internal/pb --go_out=internal/pb --go-grpc_out=internal/pb internal/pb/qmysql.proto
+//go:generate protoc -I internal/pb --gogofaster_out=plugins=grpc:internal/pb internal/pb/qmysql.proto
 package qmysql
 
 import (
@@ -10,9 +10,8 @@ import (
 	"time"
 
 	"github.com/go-sql-driver/mysql"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 
+	"gopkg.qsoa.cloud/service/internal/qconn"
 	"gopkg.qsoa.cloud/service/qmysql/internal/pb"
 )
 
@@ -32,7 +31,7 @@ func (d *qDriver) Open(name string) (driver.Conn, error) {
 	if d.client == nil {
 		flag.Parse()
 
-		cc, err := grpc.NewClient(*addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		cc, err := qconn.Dial(*addr)
 		if err != nil {
 			return nil, fmt.Errorf("cannot connect to discovery: %v", err)
 		}
