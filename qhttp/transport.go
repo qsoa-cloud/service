@@ -8,5 +8,5 @@ import (
 
 // Transport returns http.DefaultTransport with a span per request.
 func Transport() http.RoundTripper {
-	return &outbound.Transport{Base: http.DefaultTransport}
+	return &outbound.Transport{}
 }

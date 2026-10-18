@@ -209,6 +209,14 @@ func TestViaProxy(t *testing.T) {
 	if (&Transport{Base: http.NewFileTransport(http.Dir("."))}).viaProxy(req) {
 		t.Error("not an *http.Transport")
 	}
+
+	orig := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = orig })
+	u, _ := url.Parse("http://127.0.0.1:3128")
+	http.DefaultTransport = &http.Transport{Proxy: http.ProxyURL(u)}
+	if !(&Transport{}).viaProxy(req) {
+		t.Error("nil Base does not use http.DefaultTransport")
+	}
 }
 
 func TestProxyConnectHeader(t *testing.T) {

@@ -30,7 +30,7 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 			req.Header = hdr
 		}
 	}
-	resp, err := t.Base.RoundTrip(req)
+	resp, err := t.base().RoundTrip(req)
 	if err != nil {
 		span.SetTag("error", nil)
 		span.LogFields(log.Error(err))
@@ -40,8 +40,15 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return resp, nil
 }
 
+func (t *Transport) base() http.RoundTripper {
+	if t.Base != nil {
+		return t.Base
+	}
+	return http.DefaultTransport
+}
+
 func (t *Transport) viaProxy(req *http.Request) bool {
-	bt, ok := t.Base.(*http.Transport)
+	bt, ok := t.base().(*http.Transport)
 	if !ok || bt.Proxy == nil {
 		return false
 	}

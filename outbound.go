@@ -11,6 +11,6 @@ func init() {
 		t.GetProxyConnectHeader = outbound.ProxyConnectHeader
 	}
 	if http.DefaultClient.Transport == nil {
-		http.DefaultClient.Transport = &outbound.Transport{Base: http.DefaultTransport}
+		http.DefaultClient.Transport = &outbound.Transport{}
 	}
 }
