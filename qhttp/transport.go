@@ -6,7 +6,7 @@ import (
 	"gopkg.qsoa.cloud/service/internal/outbound"
 )
 
-// Transport returns http.DefaultTransport with a span per request.
+// Transport wraps the current http.DefaultTransport with a span per request.
 func Transport() http.RoundTripper {
-	return &outbound.Transport{}
+	return &outbound.Transport{Base: http.DefaultTransport}
 }

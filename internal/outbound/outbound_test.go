@@ -125,17 +125,54 @@ func TestPlainHTTPViaProxy(t *testing.T) {
 	proxyURL, _ := url.Parse(proxy.URL)
 	base := &http.Transport{Proxy: http.ProxyURL(proxyURL)}
 	defer base.CloseIdleConnections()
+	orig := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = orig })
+	http.DefaultTransport = base
+
+	for _, rt := range []*Transport{{Base: base}, {}} {
+		buf.Reset()
+		_, ctx := parentCtx()
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://api.example.com/secret?token=hunter2", nil)
+		roundTrip(t, rt, req)
+
+		s, _ := spanOf(t, buf, "HTTP GET api.example.com")
+		if h := <-got; h.Get("X-Trace-Id") != hex(s.C.T) || h.Get("X-Span-Id") != hex(s.C.S) {
+			t.Errorf("Base %v: proxy got %v, want trace %x span %x", rt.Base, h, s.C.T, s.C.S)
+		}
+		if len(req.Header) != 0 {
+			t.Errorf("request modified: %v", req.Header)
+		}
+	}
+}
+
+type recorder struct{ req *http.Request }
+
+func (r *recorder) RoundTrip(req *http.Request) (*http.Response, error) {
+	r.req = req
+	return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
+}
+
+func TestBaseReadOnce(t *testing.T) {
+	capture(t)
+	orig := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = orig })
+	direct, proxied := &recorder{}, &recorder{}
+	proxyURL, _ := url.Parse("http://127.0.0.1:3128")
+	base := &http.Transport{Proxy: func(*http.Request) (*url.URL, error) {
+		http.DefaultTransport = direct
+		return proxyURL, nil
+	}}
+	base.RegisterProtocol("http", proxied)
+	http.DefaultTransport = base
 
 	_, ctx := parentCtx()
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://api.example.com/secret?token=hunter2", nil)
-	roundTrip(t, &Transport{Base: base}, req)
-
-	s, _ := spanOf(t, buf, "HTTP GET api.example.com")
-	if h := <-got; h.Get("X-Trace-Id") != hex(s.C.T) || h.Get("X-Span-Id") != hex(s.C.S) {
-		t.Errorf("proxy got %v, want trace %x span %x", h, s.C.T, s.C.S)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://api.example.com/", nil)
+	roundTrip(t, &Transport{}, req)
+	if direct.req != nil {
+		t.Errorf("request with %v bypassed the base that chose the proxy", direct.req.Header)
 	}
-	if len(req.Header) != 0 {
-		t.Errorf("request modified: %v", req.Header)
+	if proxied.req == nil {
+		t.Error("the base that chose the proxy got no request")
 	}
 }
 
@@ -199,23 +236,15 @@ func TestViaProxy(t *testing.T) {
 		"socks5://127.0.0.1:1080": false,
 	} {
 		u, _ := url.Parse(proxy)
-		if got := (&Transport{Base: &http.Transport{Proxy: http.ProxyURL(u)}}).viaProxy(req); got != want {
+		if got := viaProxy(&http.Transport{Proxy: http.ProxyURL(u)}, req); got != want {
 			t.Errorf("%s: %v, want %v", proxy, got, want)
 		}
 	}
-	if (&Transport{Base: &http.Transport{}}).viaProxy(req) {
+	if viaProxy(&http.Transport{}, req) {
 		t.Error("no proxy")
 	}
-	if (&Transport{Base: http.NewFileTransport(http.Dir("."))}).viaProxy(req) {
+	if viaProxy(http.NewFileTransport(http.Dir(".")), req) {
 		t.Error("not an *http.Transport")
-	}
-
-	orig := http.DefaultTransport
-	t.Cleanup(func() { http.DefaultTransport = orig })
-	u, _ := url.Parse("http://127.0.0.1:3128")
-	http.DefaultTransport = &http.Transport{Proxy: http.ProxyURL(u)}
-	if !(&Transport{}).viaProxy(req) {
-		t.Error("nil Base does not use http.DefaultTransport")
 	}
 }
 

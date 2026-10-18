@@ -21,8 +21,12 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	defer span.Finish()
 	span.SetTag("http.method", req.Method)
 	span.SetTag("http.host", req.URL.Host)
+	base := t.Base
+	if base == nil {
+		base = http.DefaultTransport
+	}
 	req = req.WithContext(ctx)
-	if req.URL.Scheme == "http" && t.viaProxy(req) {
+	if req.URL.Scheme == "http" && viaProxy(base, req) {
 		if h, _ := ProxyConnectHeader(ctx, nil, ""); h != nil {
 			hdr := make(http.Header, len(req.Header)+len(h))
 			maps.Copy(hdr, req.Header)
@@ -30,7 +34,7 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 			req.Header = hdr
 		}
 	}
-	resp, err := t.base().RoundTrip(req)
+	resp, err := base.RoundTrip(req)
 	if err != nil {
 		span.SetTag("error", nil)
 		span.LogFields(log.Error(err))
@@ -40,15 +44,8 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return resp, nil
 }
 
-func (t *Transport) base() http.RoundTripper {
-	if t.Base != nil {
-		return t.Base
-	}
-	return http.DefaultTransport
-}
-
-func (t *Transport) viaProxy(req *http.Request) bool {
-	bt, ok := t.base().(*http.Transport)
+func viaProxy(base http.RoundTripper, req *http.Request) bool {
+	bt, ok := base.(*http.Transport)
 	if !ok || bt.Proxy == nil {
 		return false
 	}
