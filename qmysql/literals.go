@@ -44,10 +44,11 @@ func token(s string, i int) (int, bool) {
 	case c == '\'' || c == '"':
 		return quoted(s[i:]), true
 	case c == '`':
-		if j := strings.IndexByte(s[i+1:], '`'); j >= 0 {
-			return j + 2, false
-		}
-		return len(s) - i, false
+		return 1 + through(s[i+1:], "`"), false
+	case c == '#' || c == '-' && i+2 < len(s) && s[i+1] == '-' && s[i+2] <= ' ':
+		return through(s[i:], "\n"), false
+	case c == '/' && i+2 < len(s) && s[i+1] == '*' && s[i+2] != '!' && s[i+2] != '+':
+		return 2 + through(s[i+2:], "*/"), false
 	case i > 0 && word(s[i-1]):
 		return 1, false
 	case (c|0x20 == 'x' || c|0x20 == 'b') && i+1 < len(s) && s[i+1] == '\'':
@@ -60,6 +61,13 @@ func token(s string, i int) (int, bool) {
 		return n, true
 	}
 	return 1, false
+}
+
+func through(s, end string) int {
+	if j := strings.Index(s, end); j >= 0 {
+		return j + len(end)
+	}
+	return len(s)
 }
 
 func quoted(s string) int {

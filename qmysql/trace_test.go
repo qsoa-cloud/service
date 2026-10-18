@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"database/sql"
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
@@ -154,6 +155,30 @@ func (r *fakeRows) ColumnTypeLength(int) (int64, bool)  { r.c.add("length"); ret
 func (r *fakeRows) ColumnTypePrecisionScale(int) (int64, int64, bool) {
 	r.c.add("precision")
 	return 1, 2, true
+}
+
+type bareConnector struct{ c *calls }
+
+func (b bareConnector) Connect(context.Context) (driver.Conn, error) { return bareConn(b), nil }
+func (bareConnector) Driver() driver.Driver                          { return nil }
+
+type bareConn struct{ c *calls }
+
+func (b bareConn) Prepare(string) (driver.Stmt, error) { b.c.add("prepare"); return bareStmt(b), nil }
+func (bareConn) Close() error                          { return nil }
+func (b bareConn) Begin() (driver.Tx, error)           { b.c.add("begin"); return fakeTx{}, nil }
+
+type bareStmt struct{ c *calls }
+
+func (b bareStmt) Close() error { b.c.add("stmt close"); return nil }
+func (bareStmt) NumInput() int  { return -1 }
+func (b bareStmt) Exec(v []driver.Value) (driver.Result, error) {
+	b.c.add("exec")
+	return driver.RowsAffected(len(v)), nil
+}
+func (b bareStmt) Query([]driver.Value) (driver.Rows, error) {
+	b.c.add("query")
+	return &fakeRows{}, nil
 }
 
 type fakeTx struct{}
@@ -325,5 +350,62 @@ func TestForwarding(t *testing.T) {
 		if !c.saw(n) {
 			t.Errorf("%s was not forwarded", n)
 		}
+	}
+}
+
+func TestFallbacks(t *testing.T) {
+	c := &calls{}
+	db := sql.OpenDB(&tracedConnector{base: bareConnector{c}, db: "orders"})
+	defer db.Close()
+	ctx := context.Background()
+	tx := must(db.BeginTx(ctx, nil))
+	if n := must(must(tx.ExecContext(ctx, "UPDATE t SET a = ? WHERE b = ?", 1, 2)).RowsAffected()); n != 2 {
+		t.Errorf("rows affected %d", n)
+	}
+	rows := must(tx.QueryContext(ctx, "SELECT a FROM t WHERE b = ?", 2))
+	n := 0
+	for ; rows.Next(); n++ {
+	}
+	if err := rows.Close(); err != nil || n != 3 {
+		t.Errorf("rows %d, %v", n, err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range []string{"begin", "prepare", "exec", "query"} {
+		if !c.saw(n) {
+			t.Errorf("%s was not called", n)
+		}
+	}
+	for opts, want := range map[*sql.TxOptions]string{
+		{ReadOnly: true}:                   "sql: driver does not support read-only transactions",
+		{Isolation: sql.LevelSerializable}: "sql: driver does not support non-default isolation level",
+	} {
+		if _, err := db.BeginTx(ctx, opts); err == nil || err.Error() != want {
+			t.Errorf("BeginTx(%+v): %v", *opts, err)
+		}
+	}
+	if _, err := db.ExecContext(ctx, "UPDATE t SET a = @a", sql.Named("a", 1)); err == nil || err.Error() != "sql: driver does not support the use of Named Parameters" {
+		t.Errorf("named exec: %v", err)
+	}
+	if _, err := db.QueryContext(ctx, "SELECT a FROM t WHERE b = @b", sql.Named("b", 1)); err == nil || err.Error() != "sql: driver does not support the use of Named Parameters" {
+		t.Errorf("named query: %v", err)
+	}
+
+	conn := must((&tracedConnector{base: bareConnector{c}, db: "orders"}).Connect(ctx))
+	done, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := conn.(driver.ConnPrepareContext).PrepareContext(done, "SELECT 1"); err != context.Canceled || !c.saw("stmt close") {
+		t.Errorf("prepare with a canceled ctx: %v", err)
+	}
+	if _, err := conn.(driver.ConnBeginTx).BeginTx(done, driver.TxOptions{}); err != context.Canceled {
+		t.Errorf("begin with a canceled ctx: %v", err)
+	}
+	stmt := must(conn.Prepare("SELECT 1"))
+	if _, err := stmt.(driver.StmtExecContext).ExecContext(done, nil); err != context.Canceled {
+		t.Errorf("stmt exec with a canceled ctx: %v", err)
+	}
+	if _, err := stmt.(driver.StmtQueryContext).QueryContext(done, nil); err != context.Canceled {
+		t.Errorf("stmt query with a canceled ctx: %v", err)
 	}
 }

@@ -2,7 +2,9 @@ package qmysql
 
 import (
 	"context"
+	"database/sql"
 	"database/sql/driver"
+	"errors"
 	"io"
 	"reflect"
 
@@ -42,12 +44,8 @@ func (c *tracedConn) Begin() (driver.Tx, error) {
 }
 
 func (c *tracedConn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, error) {
-	b, ok := c.conn.(driver.ConnBeginTx)
-	if !ok {
-		return nil, driver.ErrSkip
-	}
 	span, sctx := opentracing.StartSpanFromContext(ctx, "mysql begin")
-	tx, err := b.BeginTx(sctx, opts)
+	tx, err := c.begin(sctx, opts)
 	end(span, c.db, "", err)
 	if err != nil {
 		return nil, err
@@ -55,18 +53,44 @@ func (c *tracedConn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver
 	return &tracedTx{tx: tx, db: c.db, ctx: ctx}, nil
 }
 
-func (c *tracedConn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
-	p, ok := c.conn.(driver.ConnPrepareContext)
-	if !ok {
-		return nil, driver.ErrSkip
+func (c *tracedConn) begin(ctx context.Context, opts driver.TxOptions) (driver.Tx, error) {
+	if b, ok := c.conn.(driver.ConnBeginTx); ok {
+		return b.BeginTx(ctx, opts)
 	}
+	if opts.Isolation != driver.IsolationLevel(sql.LevelDefault) {
+		return nil, errors.New("sql: driver does not support non-default isolation level")
+	}
+	if opts.ReadOnly {
+		return nil, errors.New("sql: driver does not support read-only transactions")
+	}
+	tx, err := c.conn.Begin()
+	if err == nil && ctx.Err() != nil {
+		tx.Rollback()
+		return nil, ctx.Err()
+	}
+	return tx, err
+}
+
+func (c *tracedConn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "mysql prepare")
-	stmt, err := p.PrepareContext(ctx, query)
+	stmt, err := c.prepare(ctx, query)
 	end(span, c.db, query, err)
 	if err != nil {
 		return nil, err
 	}
 	return &tracedStmt{stmt: stmt, db: c.db, query: query}, nil
+}
+
+func (c *tracedConn) prepare(ctx context.Context, query string) (driver.Stmt, error) {
+	if p, ok := c.conn.(driver.ConnPrepareContext); ok {
+		return p.PrepareContext(ctx, query)
+	}
+	stmt, err := c.conn.Prepare(query)
+	if err == nil && ctx.Err() != nil {
+		stmt.Close()
+		return nil, ctx.Err()
+	}
+	return stmt, err
 }
 
 func (c *tracedConn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
@@ -128,23 +152,48 @@ func (s *tracedStmt) Exec(args []driver.Value) (driver.Result, error) { return s
 func (s *tracedStmt) Query(args []driver.Value) (driver.Rows, error)  { return s.stmt.Query(args) }
 
 func (s *tracedStmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
-	q, ok := s.stmt.(driver.StmtQueryContext)
-	if !ok {
-		return nil, driver.ErrSkip
-	}
 	span, ctx := opentracing.StartSpanFromContext(ctx, "mysql stmt query")
-	rows, err := q.QueryContext(ctx, args)
+	rows, err := s.rows(ctx, args)
 	return traceRows(span, s.db, s.query, rows, err)
 }
 
-func (s *tracedStmt) ExecContext(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
-	e, ok := s.stmt.(driver.StmtExecContext)
-	if !ok {
-		return nil, driver.ErrSkip
+func (s *tracedStmt) rows(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
+	if q, ok := s.stmt.(driver.StmtQueryContext); ok {
+		return q.QueryContext(ctx, args)
 	}
+	v, err := values(ctx, args)
+	if err != nil {
+		return nil, err
+	}
+	return s.stmt.Query(v)
+}
+
+func (s *tracedStmt) ExecContext(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "mysql stmt exec")
-	res, err := e.ExecContext(ctx, args)
+	res, err := s.exec(ctx, args)
 	return traceExec(span, s.db, s.query, res, err)
+}
+
+func (s *tracedStmt) exec(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
+	if e, ok := s.stmt.(driver.StmtExecContext); ok {
+		return e.ExecContext(ctx, args)
+	}
+	v, err := values(ctx, args)
+	if err != nil {
+		return nil, err
+	}
+	return s.stmt.Exec(v)
+}
+
+func values(ctx context.Context, named []driver.NamedValue) ([]driver.Value, error) {
+	v := make([]driver.Value, len(named))
+	for i, p := range named {
+		if p.Name != "" {
+			return nil, errors.New("sql: driver does not support the use of Named Parameters")
+		}
+		v[i] = p.Value
+	}
+	return v, ctx.Err()
 }
 
 func (s *tracedStmt) CheckNamedValue(nv *driver.NamedValue) error {
