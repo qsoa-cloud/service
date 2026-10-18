@@ -59,3 +59,12 @@ func main() {
 }
 
 ```
+
+## MySQL proxy
+With `-q_mysql_sock` (runner passes `unix:///qcloud/mysql_proxy.sock`), `qmysql` connects through runner's MySQL proxy without a password. `qmysql` traces every SQL call.
+
+## Outbound HTTP
+Importing the library makes `http.DefaultClient` trace outbound requests. For another client, `qhttp.Transport()` wraps the current `http.DefaultTransport` with a span per request:
+```go
+client := &http.Client{Transport: qhttp.Transport()}
+```
