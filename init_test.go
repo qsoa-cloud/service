@@ -11,6 +11,7 @@ import (
 	_ "gopkg.qsoa.cloud/service/qdfs"
 	_ "gopkg.qsoa.cloud/service/qemail"
 	_ "gopkg.qsoa.cloud/service/qmysql"
+	_ "gopkg.qsoa.cloud/service/qsecrets"
 )
 
 func TestInit(t *testing.T) {
