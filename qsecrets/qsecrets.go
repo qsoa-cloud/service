@@ -19,6 +19,7 @@ import (
 
 var sockAddr = flag.String("q_secrets_sock", "", "Secrets socket")
 
+// ErrNotFound is returned by Get when no secret is at the path.
 var ErrNotFound = errors.New("qsecrets: secret not found")
 
 var errNoSocket = errors.New("qsecrets: the runner provides no secrets socket")
@@ -29,6 +30,7 @@ var (
 )
 
 // Get returns the secret at path for this service and env.
+// Other errors from the runner wrap a gRPC status, such as codes.Unavailable, that status.Code reads.
 func Get(ctx context.Context, path string) (string, error) {
 	c, err := getClient()
 	if err != nil {

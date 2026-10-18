@@ -51,7 +51,7 @@ func TestGet(t *testing.T) {
 	if _, err := Get(context.Background(), "missing"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("missing: %v", err)
 	}
-	if _, err := Get(context.Background(), "other"); err == nil || errors.Is(err, ErrNotFound) {
+	if _, err := Get(context.Background(), "other"); status.Code(err) != codes.Unavailable || errors.Is(err, ErrNotFound) {
 		t.Fatalf("unavailable: %v", err)
 	}
 }
