@@ -21,10 +21,7 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	defer span.Finish()
 	span.SetTag("http.method", req.Method)
 	span.SetTag("http.host", req.URL.Host)
-	base := t.Base
-	if base == nil {
-		base = http.DefaultTransport
-	}
+	base := t.base()
 	req = req.WithContext(ctx)
 	if req.URL.Scheme == "http" && viaProxy(base, req) {
 		if h, _ := ProxyConnectHeader(ctx, nil, ""); h != nil {
@@ -42,6 +39,20 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	span.SetTag("http.status_code", resp.StatusCode)
 	return resp, nil
+}
+
+// CloseIdleConnections closes the idle connections of the base transport.
+func (t *Transport) CloseIdleConnections() {
+	if c, ok := t.base().(interface{ CloseIdleConnections() }); ok {
+		c.CloseIdleConnections()
+	}
+}
+
+func (t *Transport) base() http.RoundTripper {
+	if t.Base != nil {
+		return t.Base
+	}
+	return http.DefaultTransport
 }
 
 func viaProxy(base http.RoundTripper, req *http.Request) bool {

@@ -24,7 +24,12 @@ func TestOutbound(t *testing.T) {
 	}
 }
 
-type stubTransport struct{ req *http.Request }
+type stubTransport struct {
+	req    *http.Request
+	closed bool
+}
+
+func (s *stubTransport) CloseIdleConnections() { s.closed = true }
 
 func (s *stubTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	s.req = req
@@ -44,5 +49,17 @@ func TestDefaultTransportSwap(t *testing.T) {
 	resp.Body.Close()
 	if stub.req == nil || stub.req.URL.Host != "127.0.0.1:1" {
 		t.Errorf("stub got %v", stub.req)
+	}
+}
+
+func TestCloseIdleConnections(t *testing.T) {
+	orig := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = orig })
+	stub := &stubTransport{}
+	http.DefaultTransport = stub
+
+	http.DefaultClient.CloseIdleConnections()
+	if !stub.closed {
+		t.Error("CloseIdleConnections did not reach http.DefaultTransport")
 	}
 }
