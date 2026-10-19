@@ -54,3 +54,27 @@ func BenchmarkTracedQueryParallel(b *testing.B) {
 		}
 	})
 }
+
+func tracedStmtExec() func() {
+	stmt := must(connect(nil).(driver.ConnPrepareContext).PrepareContext(context.Background(), benchSQL)).(driver.StmtExecContext)
+	ctx := context.Background()
+	return func() { must(stmt.ExecContext(ctx, nil)) }
+}
+
+func BenchmarkTracedStmtExec(b *testing.B) {
+	e := tracedStmtExec()
+	b.ReportAllocs()
+	for b.Loop() {
+		e()
+	}
+}
+
+func BenchmarkTracedStmtExecParallel(b *testing.B) {
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		e := tracedStmtExec()
+		for pb.Next() {
+			e()
+		}
+	})
+}

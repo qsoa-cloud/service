@@ -7,7 +7,9 @@ import (
 	"errors"
 	"io"
 	"reflect"
+	"strconv"
 
+	"github.com/go-sql-driver/mysql"
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/log"
 )
@@ -74,11 +76,12 @@ func (c *tracedConn) begin(ctx context.Context, opts driver.TxOptions) (driver.T
 func (c *tracedConn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "mysql prepare")
 	stmt, err := c.prepare(ctx, query)
-	end(span, c.db, query, err)
+	stripped := stripLiterals(query)
+	end(span, c.db, stripped, err)
 	if err != nil {
 		return nil, err
 	}
-	return &tracedStmt{stmt: stmt, db: c.db, query: query}, nil
+	return &tracedStmt{stmt: stmt, db: c.db, sql: stripped}, nil
 }
 
 func (c *tracedConn) prepare(ctx context.Context, query string) (driver.Stmt, error) {
@@ -100,7 +103,10 @@ func (c *tracedConn) QueryContext(ctx context.Context, query string, args []driv
 	}
 	span, ctx := opentracing.StartSpanFromContext(ctx, "mysql query")
 	rows, err := q.QueryContext(ctx, query, args)
-	return traceRows(span, c.db, query, rows, err)
+	if err == driver.ErrSkip {
+		return nil, err
+	}
+	return traceRows(span, c.db, stripLiterals(query), rows, err)
 }
 
 func (c *tracedConn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
@@ -110,7 +116,10 @@ func (c *tracedConn) ExecContext(ctx context.Context, query string, args []drive
 	}
 	span, ctx := opentracing.StartSpanFromContext(ctx, "mysql exec")
 	res, err := e.ExecContext(ctx, query, args)
-	return traceExec(span, c.db, query, res, err)
+	if err == driver.ErrSkip {
+		return nil, err
+	}
+	return traceExec(span, c.db, stripLiterals(query), res, err)
 }
 
 func (c *tracedConn) Ping(ctx context.Context) error {
@@ -140,9 +149,9 @@ func (c *tracedConn) CheckNamedValue(nv *driver.NamedValue) error {
 }
 
 type tracedStmt struct {
-	stmt  driver.Stmt
-	db    string
-	query string
+	stmt driver.Stmt
+	db   string
+	sql  string
 }
 
 func (s *tracedStmt) Close() error  { return s.stmt.Close() }
@@ -154,7 +163,7 @@ func (s *tracedStmt) Query(args []driver.Value) (driver.Rows, error)  { return s
 func (s *tracedStmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "mysql stmt query")
 	rows, err := s.rows(ctx, args)
-	return traceRows(span, s.db, s.query, rows, err)
+	return traceRows(span, s.db, s.sql, rows, err)
 }
 
 func (s *tracedStmt) rows(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
@@ -171,7 +180,7 @@ func (s *tracedStmt) rows(ctx context.Context, args []driver.NamedValue) (driver
 func (s *tracedStmt) ExecContext(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "mysql stmt exec")
 	res, err := s.exec(ctx, args)
-	return traceExec(span, s.db, s.query, res, err)
+	return traceExec(span, s.db, s.sql, res, err)
 }
 
 func (s *tracedStmt) exec(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
@@ -299,37 +308,37 @@ func (t *tracedTx) run(op string, f func() error) error {
 	return err
 }
 
-func traceRows(span opentracing.Span, db, query string, rows driver.Rows, err error) (driver.Rows, error) {
+func traceRows(span opentracing.Span, db, stripped string, rows driver.Rows, err error) (driver.Rows, error) {
 	if err != nil {
-		end(span, db, query, err)
+		end(span, db, stripped, err)
 		return nil, err
 	}
-	tag(span, db, query, nil)
+	tag(span, db, stripped, nil)
 	return &tracedRows{rows: rows, span: span}, nil
 }
 
-func traceExec(span opentracing.Span, db, query string, res driver.Result, err error) (driver.Result, error) {
+func traceExec(span opentracing.Span, db, stripped string, res driver.Result, err error) (driver.Result, error) {
 	if err == nil {
 		if n, e := res.RowsAffected(); e == nil {
 			span.SetTag("rows_affected", n)
 		}
 	}
-	end(span, db, query, err)
+	end(span, db, stripped, err)
 	return res, err
 }
 
-func end(span opentracing.Span, db, query string, err error) {
+func end(span opentracing.Span, db, stripped string, err error) {
 	if err == driver.ErrSkip {
 		return
 	}
-	tag(span, db, query, err)
+	tag(span, db, stripped, err)
 	span.Finish()
 }
 
-func tag(span opentracing.Span, db, query string, err error) {
+func tag(span opentracing.Span, db, stripped string, err error) {
 	span.SetTag("db", db)
-	if query != "" {
-		span.SetTag("sql", stripLiterals(query))
+	if stripped != "" {
+		span.SetTag("sql", stripped)
 	}
 	fail(span, err)
 }
@@ -337,6 +346,18 @@ func tag(span opentracing.Span, db, query string, err error) {
 func fail(span opentracing.Span, err error) {
 	if err != nil {
 		span.SetTag("error", nil)
-		span.LogFields(log.Error(err))
+		span.LogFields(log.String("error.object", errText(err)))
 	}
+}
+
+func errText(err error) string {
+	var me *mysql.MySQLError
+	if !errors.As(err, &me) {
+		return stripLiterals(err.Error())
+	}
+	s := "Error " + strconv.Itoa(int(me.Number))
+	if me.SQLState != [5]byte{} {
+		s += " (" + string(me.SQLState[:]) + ")"
+	}
+	return s
 }

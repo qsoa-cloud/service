@@ -15,6 +15,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/go-sql-driver/mysql"
 	"github.com/opentracing/opentracing-go"
 
 	"gopkg.qsoa.cloud/tracer"
@@ -43,7 +44,13 @@ func (c *calls) saw(name string) bool {
 	return c.m[name] > 0
 }
 
-var errBoom = errors.New("boom")
+var (
+	errBoom   = errors.New("boom")
+	errSyntax = &mysql.MySQLError{Number: 1064, SQLState: [5]byte{'4', '2', '0', '0', '0'},
+		Message: "You have an error in your SQL syntax; check the manual for the right syntax to use near 'tok = 'hunter2'' at line 1"}
+	errDup    = &mysql.MySQLError{Number: 1062, Message: "Duplicate entry 'hunter2' for key 'email'"}
+	errInfile = errors.New("local file '/srv/hunter2.csv' is not registered")
+)
 
 func result(query string) error {
 	switch query {
@@ -51,6 +58,12 @@ func result(query string) error {
 		return driver.ErrSkip
 	case "fail":
 		return errBoom
+	case "syntax":
+		return errSyntax
+	case "dup":
+		return errDup
+	case "infile":
+		return errInfile
 	}
 	return nil
 }
@@ -322,6 +335,26 @@ func TestTraceError(t *testing.T) {
 	for _, s := range got {
 		if _, ok := s.T["error"]; s.O != "mysql query" || !ok {
 			t.Errorf("%s: no error tag: %v", s.O, s.T)
+		}
+	}
+}
+
+func TestTraceErrorText(t *testing.T) {
+	buf := traced(t)
+	q := connect(nil).(driver.QueryerContext)
+	for _, e := range []error{errSyntax, errDup, errInfile} {
+		query := map[error]string{errSyntax: "syntax", errDup: "dup", errInfile: "infile"}[e]
+		if _, err := q.QueryContext(context.Background(), query, nil); err != e {
+			t.Fatalf("%s: %v", query, err)
+		}
+	}
+	out := buf.String()
+	if strings.Contains(out, "hunter2") {
+		t.Errorf("data in span: %s", out)
+	}
+	for _, want := range []string{`"v":"Error 1064 (42000)"`, `"v":"Error 1062"`, `"v":"local file ? is not registered"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("no %s in %s", want, out)
 		}
 	}
 }
