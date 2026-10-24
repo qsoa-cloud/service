@@ -25,6 +25,8 @@ var (
 		server: grpc.NewServer(
 			grpc.UnaryInterceptor(serverUnaryInterceptor),
 			grpc.StreamInterceptor(serverStreamInterceptor),
+			grpc.MaxRecvMsgSize(16<<20),
+			grpc.MaxSendMsgSize(16<<20),
 		),
 	}
 )
