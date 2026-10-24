@@ -80,10 +80,10 @@ func chToken(s string, i int) (int, bool) {
 	switch {
 	case c == '`':
 		return quoted(s[i:]), false
-	case c == '-' && i+1 < len(s) && s[i+1] == '-':
+	case (c == '-' || c == '/') && i+1 < len(s) && s[i+1] == c:
 		return through(s[i:], "\n"), false
 	case c == '/' && i+1 < len(s) && s[i+1] == '*':
-		return 2 + through(s[i+2:], "*/"), false
+		return 2 + nested(s[i+2:]), false
 	case c == '#':
 		if i+1 < len(s) && (s[i+1] == ' ' || s[i+1] == '!') {
 			return through(s[i:], "\n"), false
@@ -101,6 +101,22 @@ func chToken(s string, i int) (int, bool) {
 func through(s, end string) int {
 	if j := strings.Index(s, end); j >= 0 {
 		return j + len(end)
+	}
+	return len(s)
+}
+
+func nested(s string) int {
+	for depth, j := 1, 0; j+1 < len(s); j++ {
+		switch s[j : j+2] {
+		case "/*":
+			depth++
+			j++
+		case "*/":
+			if depth--; depth == 0 {
+				return j + 2
+			}
+			j++
+		}
 	}
 	return len(s)
 }

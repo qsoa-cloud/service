@@ -493,10 +493,14 @@ func TestDeadlineNotSent(t *testing.T) {
 	t.Cleanup(func() {
 		base.Exec(context.Background(), "DROP USER IF EXISTS "+name)
 		base.Exec(context.Background(), "DROP SETTINGS PROFILE IF EXISTS "+name)
+		base.Exec(context.Background(), "DROP DATABASE IF EXISTS "+name)
 	})
 	for _, q := range []string{
 		"CREATE SETTINGS PROFILE " + name + " SETTINGS max_execution_time = 60 CONST",
 		"CREATE USER " + name + " IDENTIFIED WITH sha256_password BY '" + password + "' HOST ANY SETTINGS PROFILE '" + name + "'",
+		"CREATE DATABASE " + name,
+		"CREATE TABLE " + name + ".t (id UInt64) ENGINE = MergeTree ORDER BY id",
+		"GRANT SELECT, INSERT ON " + name + ".* TO " + name,
 	} {
 		if err := base.Exec(context.Background(), q); err != nil {
 			t.Fatalf("setup: %s", errText(err))
@@ -518,12 +522,27 @@ func TestDeadlineNotSent(t *testing.T) {
 	if err := c.QueryRow(ctx, "SELECT 1").Scan(&n); err != nil || n != 1 {
 		t.Fatalf("query with a deadline: %d, %v", n, err)
 	}
+	if err := c.Exec(ctx, "INSERT INTO "+name+".t VALUES (1)"); err != nil {
+		t.Fatalf("exec with a deadline: %v", err)
+	}
+	b, err := c.PrepareBatch(ctx, "INSERT INTO "+name+".t")
+	if err != nil {
+		t.Fatalf("batch with a deadline: %v", err)
+	}
+	must(0, b.Append(uint64(2)))
+	if err := b.Send(); err != nil {
+		t.Fatalf("batch send with a deadline: %v", err)
+	}
+	var rows uint64
+	if err := c.QueryRow(ctx, "SELECT count() FROM "+name+".t").Scan(&rows); err != nil || rows != 2 {
+		t.Fatalf("rows %d, %v", rows, err)
+	}
 
 	ctx, cancel = context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	start := time.Now()
 	var count uint64
-	err := c.QueryRow(ctx, "SELECT count() FROM numbers(1000000000000)").Scan(&count)
+	err = c.QueryRow(ctx, "SELECT count() FROM numbers(1000000000000)").Scan(&count)
 	if d := time.Since(start); !errors.Is(err, context.DeadlineExceeded) || d > 10*time.Second {
 		t.Fatalf("long query: %v after %s", err, d)
 	}
