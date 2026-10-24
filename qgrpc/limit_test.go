@@ -14,6 +14,7 @@ import (
 )
 
 func serveLimit(t *testing.T, s *grpc.Server) string {
+	t.Helper()
 	handler := func(size func(*wrapperspb.BytesValue) int) grpc.MethodHandler {
 		return func(_ any, _ context.Context, dec func(any) error, _ grpc.UnaryServerInterceptor) (any, error) {
 			var m wrapperspb.BytesValue

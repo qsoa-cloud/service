@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
-// GatewayClientCert returns the client certificate that the gateway verified and forwarded with the call.
+// GatewayClientCert returns the client certificate that the gateway verified and forwarded with the call, and false for a call that did not come through a gateway or that carried no certificate.
 func GatewayClientCert(ctx context.Context) (*x509.Certificate, bool) {
 	md, _ := metadata.FromIncomingContext(ctx)
 	via, raw := md.Get("x-qcloud-via"), md.Get("x-client-cert")
