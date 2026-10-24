@@ -22,14 +22,18 @@ type qGRpc struct {
 
 var (
 	gRpcService = &qGRpc{
-		server: grpc.NewServer(
-			grpc.UnaryInterceptor(serverUnaryInterceptor),
-			grpc.StreamInterceptor(serverStreamInterceptor),
-			grpc.MaxRecvMsgSize(16<<20),
-			grpc.MaxSendMsgSize(16<<20),
-		),
+		server: newServer(),
 	}
 )
+
+func newServer() *grpc.Server {
+	return grpc.NewServer(
+		grpc.UnaryInterceptor(serverUnaryInterceptor),
+		grpc.StreamInterceptor(serverStreamInterceptor),
+		grpc.MaxRecvMsgSize(16<<20),
+		grpc.MaxSendMsgSize(16<<20),
+	)
+}
 
 func init() {
 	service.RegisterService(gRpcService)

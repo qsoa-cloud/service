@@ -70,4 +70,4 @@ client := &http.Client{Transport: qhttp.Transport()}
 ```
 
 ## gRPC gateway
-The `qgrpc` server accepts and sends messages up to 16 MiB. A call that came through a gRPC gateway carries `x-qcloud-via: gateway` and, when the client presented a certificate that the gateway verified, that certificate in `x-client-cert`. `qgrpc.GatewayClientCert(ctx)` returns the certificate only for such calls; for calls from other services or without a certificate it returns false.
+The `qgrpc` server and clients from `qgrpc.Dial` accept and send messages up to 16 MiB. A call that came through a gRPC gateway carries `x-qcloud-via: gateway` and, when the client presented a certificate that the gateway verified, that certificate in `x-client-cert`. `qgrpc.GatewayClientCert(ctx)` returns the certificate only for such calls; for calls from other services or without a certificate it returns false.

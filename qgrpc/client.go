@@ -21,6 +21,8 @@ func Dial(target string, addOpts ...grpc.DialOption) (*grpc.ClientConn, error) {
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithDefaultCallOptions(
 			grpc.WaitForReady(true),
+			grpc.MaxCallRecvMsgSize(16<<20),
+			grpc.MaxCallSendMsgSize(16<<20),
 		),
 		grpc.WithUnaryInterceptor(ClientUnaryInterceptor),
 		grpc.WithStreamInterceptor(ClientStreamInterceptor),
