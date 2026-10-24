@@ -2,20 +2,29 @@ package sqltext
 
 import "testing"
 
-func TestStripHeredoc(t *testing.T) {
+func TestStripDialects(t *testing.T) {
 	for in, want := range map[string]string{
-		"SELECT $$hunter2$$":                    "SELECT ?",
-		"SELECT $x$it's 'a' $$ hunter2$x$, 'b'": "SELECT ?, ?",
-		"SELECT $$hunter2":                      "SELECT ?",
-		"SELECT a$b$c, $1 FROM t":               "SELECT a$b$c, $1 FROM t",
+		"SELECT $$hunter2$$":                          "SELECT ?",
+		"SELECT $x$it's 'a' $$ hunter2$x$, 'b'":       "SELECT ?, ?",
+		"SELECT $$hunter2":                            "SELECT ?",
+		"SELECT x$$hunter2$$":                         "SELECT x?",
+		"SELECT a --don't\nWHERE p = 'hunter2'":       "SELECT a --don't\nWHERE p = ?",
+		"SELECT 1 /*+ it's */ WHERE p = 'hunter2'":    "SELECT ? /*+ it's */ WHERE p = ?",
+		"SELECT 1 /*! it's */ WHERE p = 'hunter2'":    "SELECT ? /*! it's */ WHERE p = ?",
+		"SELECT a # it's\nWHERE p = 'hunter2'":        "SELECT a # it's\nWHERE p = ?",
+		"SELECT a #!it's\nWHERE p = 'hunter2'":        "SELECT a #!it's\nWHERE p = ?",
+		"SELECT a #x 'hunter2'":                       "SELECT a #x ?",
+		"SELECT 1 AS `a\\`b`, 'hunter2'":              "SELECT ? AS `a\\`b`, ?",
+		"SELECT 1 AS `a``b`, 'hunter2' FROM `t`":      "SELECT ? AS `a``b`, ? FROM `t`",
+		"SELECT a FROM t WHERE b = 'x' AND c = 4.5e3": "SELECT a FROM t WHERE b = ? AND c = ?",
 	} {
-		if got := Strip(in, true); got != want {
-			t.Errorf("%q: %q, want %q", in, got, want)
+		if got := Strip(in, ClickHouse); got != want {
+			t.Errorf("ClickHouse %q: %q, want %q", in, got, want)
 		}
 	}
-	for _, in := range []string{"SELECT $$hunter2$$", "SELECT $x$hunter2$x$"} {
-		if got := Strip(in, false); got != in {
-			t.Errorf("without heredoc %q: %q", in, got)
+	for _, in := range []string{"SELECT $$hunter2$$", "SELECT $x$hunter2$x$", "SELECT x$$hunter2$$"} {
+		if got := Strip(in, MySQL); got != in {
+			t.Errorf("MySQL %q: %q", in, got)
 		}
 	}
 }

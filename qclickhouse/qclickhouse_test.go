@@ -3,6 +3,7 @@ package qclickhouse
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -93,7 +94,7 @@ func serve(c net.Conn, hellos chan<- hello, exception bool) {
 }
 
 func TestOpenWithoutSocket(t *testing.T) {
-	if _, err := Open(context.Background(), "orders"); err == nil || !strings.Contains(err.Error(), "no ClickHouse database is attached") {
+	if _, err := Open(context.Background(), "orders"); !errors.Is(err, ErrNotAttached) || err.Error() != "qclickhouse: no ClickHouse database is attached" {
 		t.Fatalf("Open: %v", err)
 	}
 }
@@ -120,22 +121,28 @@ func TestOpenDialsSocket(t *testing.T) {
 	}
 }
 
-func drainers() int {
-	buf := make([]byte, 1<<20)
-	return strings.Count(string(buf[:runtime.Stack(buf, true)]), "runDrainPool")
+func goroutines() int {
+	for n := runtime.NumGoroutine(); ; {
+		time.Sleep(20 * time.Millisecond)
+		m := runtime.NumGoroutine()
+		if m == n {
+			return n
+		}
+		n = m
+	}
 }
 
 func TestOpenUnknownDatabase(t *testing.T) {
 	fakeProxy(t, true)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	before := drainers()
+	before := goroutines()
 	_, err := Open(ctx, "orders")
 	var e *clickhouse.Exception
 	if !errors.As(err, &e) || e.Code != 81 {
 		t.Fatalf("Open: %v", err)
 	}
-	for deadline := time.Now().Add(time.Second); drainers() > before; time.Sleep(10 * time.Millisecond) {
+	for deadline := time.Now().Add(time.Second); runtime.NumGoroutine() > before; time.Sleep(10 * time.Millisecond) {
 		if time.Now().After(deadline) {
 			t.Fatal("the pool of a failed Open was not closed")
 		}
@@ -159,9 +166,19 @@ func result(q string) error {
 	return nil
 }
 
-type fakeConn struct{ driver.Conn }
+type fakeConn struct {
+	driver.Conn
+	seen *[]context.Context
+}
 
-func (fakeConn) Query(_ context.Context, q string, _ ...any) (driver.Rows, error) {
+func (f fakeConn) saw(ctx context.Context) {
+	if f.seen != nil {
+		*f.seen = append(*f.seen, ctx)
+	}
+}
+
+func (f fakeConn) Query(ctx context.Context, q string, _ ...any) (driver.Rows, error) {
+	f.saw(ctx)
 	if q == "broken" {
 		return &fakeRows{err: errBoom}, nil
 	}
@@ -171,20 +188,31 @@ func (fakeConn) Query(_ context.Context, q string, _ ...any) (driver.Rows, error
 	return &fakeRows{}, nil
 }
 
-func (fakeConn) QueryRow(_ context.Context, q string, _ ...any) driver.Row {
+func (f fakeConn) QueryRow(ctx context.Context, q string, _ ...any) driver.Row {
+	f.saw(ctx)
 	if q == "unknown" {
 		return &fakeRow{err: errUnknownTable}
 	}
 	return &fakeRow{scan: result(q)}
 }
 
-func (fakeConn) Select(_ context.Context, _ any, q string, _ ...any) error { return result(q) }
-func (fakeConn) Exec(_ context.Context, q string, _ ...any) error          { return result(q) }
-func (fakeConn) AsyncInsert(_ context.Context, q string, _ bool, _ ...any) error {
+func (f fakeConn) Select(ctx context.Context, _ any, q string, _ ...any) error {
+	f.saw(ctx)
 	return result(q)
 }
 
-func (fakeConn) PrepareBatch(_ context.Context, q string, _ ...driver.PrepareBatchOption) (driver.Batch, error) {
+func (f fakeConn) Exec(ctx context.Context, q string, _ ...any) error {
+	f.saw(ctx)
+	return result(q)
+}
+
+func (f fakeConn) AsyncInsert(ctx context.Context, q string, _ bool, _ ...any) error {
+	f.saw(ctx)
+	return result(q)
+}
+
+func (f fakeConn) PrepareBatch(ctx context.Context, q string, _ ...driver.PrepareBatchOption) (driver.Batch, error) {
+	f.saw(ctx)
 	if err := result(q); err != nil {
 		return nil, err
 	}
@@ -407,7 +435,44 @@ func TestHeredocNotTraced(t *testing.T) {
 	}
 }
 
-func TestClickHouseSpans(t *testing.T) {
+func TestCommentNotTraced(t *testing.T) {
+	buf := traced(t)
+	c := &conn{Conn: fakeConn{}, db: "orders"}
+	must(0, c.Exec(context.Background(), "SELECT a FROM t --don't use the index\nWHERE token = 'hunter2'"))
+	if len(spans(t, bytes.NewBufferString(buf.String()))) != 1 || strings.Contains(buf.String(), "hunter2") {
+		t.Fatalf("spans: %s", buf)
+	}
+}
+
+func TestDriverContext(t *testing.T) {
+	var seen []context.Context
+	c := &conn{Conn: fakeConn{seen: &seen}, db: "orders"}
+	type key struct{}
+	ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), key{}, "v"), time.Minute)
+	defer cancel()
+	must(c.Query(ctx, "SELECT 1")).Close()
+	c.QueryRow(ctx, "SELECT 1").Scan()
+	must(0, c.Select(ctx, nil, "SELECT 1"))
+	must(0, c.Exec(ctx, "SELECT 1"))
+	must(0, c.AsyncInsert(ctx, "INSERT INTO t VALUES (1)", false))
+	must(0, must(c.PrepareBatch(ctx, "INSERT INTO t")).Send())
+	if len(seen) != 6 {
+		t.Fatalf("%d driver calls", len(seen))
+	}
+	cancel()
+	for i, d := range seen {
+		if _, ok := d.Deadline(); ok || d.Done() != ctx.Done() || d.Err() != context.Canceled || d.Value(key{}) != "v" {
+			t.Errorf("call %d: the driver context differs from the caller's beyond its deadline", i)
+		}
+	}
+	seen = nil
+	must(c.Query(context.Background(), "SELECT 1")).Close()
+	if _, ok := seen[0].(noDeadline); ok {
+		t.Error("a context without a deadline was wrapped")
+	}
+}
+
+func clickhouseTest(t *testing.T) (driver.Conn, *clickhouse.Options) {
 	dsn := os.Getenv("QSOA_TEST_CLICKHOUSE_DSN")
 	if dsn == "" {
 		t.Skip("QSOA_TEST_CLICKHOUSE_DSN is not set")
@@ -417,15 +482,61 @@ func TestClickHouseSpans(t *testing.T) {
 		t.Fatal("cannot parse QSOA_TEST_CLICKHOUSE_DSN")
 	}
 	base := must(clickhouse.Open(opts))
+	t.Cleanup(func() { base.Close() })
+	return base, opts
+}
+
+func TestDeadlineNotSent(t *testing.T) {
+	base, opts := clickhouseTest(t)
+	name := fmt.Sprintf("qclickhouse_test_%d", time.Now().UnixNano())
+	password := rand.Text()
+	t.Cleanup(func() {
+		base.Exec(context.Background(), "DROP USER IF EXISTS "+name)
+		base.Exec(context.Background(), "DROP SETTINGS PROFILE IF EXISTS "+name)
+	})
+	for _, q := range []string{
+		"CREATE SETTINGS PROFILE " + name + " SETTINGS max_execution_time = 60 CONST",
+		"CREATE USER " + name + " IDENTIFIED WITH sha256_password BY '" + password + "' HOST ANY SETTINGS PROFILE '" + name + "'",
+	} {
+		if err := base.Exec(context.Background(), q); err != nil {
+			t.Fatalf("setup: %s", errText(err))
+		}
+	}
+	uo := *opts
+	uo.Auth = clickhouse.Auth{Username: name, Password: password}
+	user := must(clickhouse.Open(&uo))
+	t.Cleanup(func() { user.Close() })
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	var e *clickhouse.Exception
+	if err := user.Exec(ctx, "SELECT 1"); !errors.As(err, &e) || e.Code != 452 {
+		t.Fatalf("the driver alone: %v", err)
+	}
+	c := &conn{Conn: user, db: "default"}
+	var n uint8
+	if err := c.QueryRow(ctx, "SELECT 1").Scan(&n); err != nil || n != 1 {
+		t.Fatalf("query with a deadline: %d, %v", n, err)
+	}
+
+	ctx, cancel = context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	start := time.Now()
+	var count uint64
+	err := c.QueryRow(ctx, "SELECT count() FROM numbers(1000000000000)").Scan(&count)
+	if d := time.Since(start); !errors.Is(err, context.DeadlineExceeded) || d > 10*time.Second {
+		t.Fatalf("long query: %v after %s", err, d)
+	}
+}
+
+func TestClickHouseSpans(t *testing.T) {
+	base, _ := clickhouseTest(t)
 	ctx := context.Background()
 	db := fmt.Sprintf("qclickhouse_test_%d", time.Now().UnixNano())
 	if err := base.Exec(ctx, "CREATE DATABASE "+db); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		base.Exec(context.Background(), "DROP DATABASE IF EXISTS "+db)
-		base.Close()
-	})
+	t.Cleanup(func() { base.Exec(context.Background(), "DROP DATABASE IF EXISTS "+db) })
 	buf := traced(t)
 	c := &conn{Conn: base, db: db}
 	must(0, c.Exec(ctx, "CREATE TABLE "+db+".t (id UInt64, p String) ENGINE = MergeTree ORDER BY id"))
@@ -462,9 +573,8 @@ func TestClickHouseSpans(t *testing.T) {
 
 const benchSQL = "SELECT id, name FROM events WHERE status = 'active' AND ts > '2026-01-01 00:00:00' AND score >= 42.5 ORDER BY ts DESC LIMIT 100"
 
-func tracedQuery() func() {
+func tracedQuery(ctx context.Context) func() {
 	c := &conn{Conn: fakeConn{}, db: "orders"}
-	ctx := context.Background()
 	return func() {
 		rows := must(c.Query(ctx, benchSQL))
 		for rows.Next() {
@@ -474,7 +584,7 @@ func tracedQuery() func() {
 }
 
 func BenchmarkTracedQuery(b *testing.B) {
-	q := tracedQuery()
+	q := tracedQuery(context.Background())
 	b.ReportAllocs()
 	for b.Loop() {
 		q()
@@ -484,7 +594,29 @@ func BenchmarkTracedQuery(b *testing.B) {
 func BenchmarkTracedQueryParallel(b *testing.B) {
 	b.ReportAllocs()
 	b.RunParallel(func(pb *testing.PB) {
-		q := tracedQuery()
+		q := tracedQuery(context.Background())
+		for pb.Next() {
+			q()
+		}
+	})
+}
+
+func BenchmarkTracedQueryDeadline(b *testing.B) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
+	defer cancel()
+	q := tracedQuery(ctx)
+	b.ReportAllocs()
+	for b.Loop() {
+		q()
+	}
+}
+
+func BenchmarkTracedQueryDeadlineParallel(b *testing.B) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
+	defer cancel()
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		q := tracedQuery(ctx)
 		for pb.Next() {
 			q()
 		}

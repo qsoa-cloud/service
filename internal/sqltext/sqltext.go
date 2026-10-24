@@ -7,13 +7,24 @@ import (
 
 const maxSQL = 1024
 
-// Strip replaces the literals in sql with ? and cuts it to 1024 bytes. With heredoc, $tag$...$tag$ strings are literals too.
-func Strip(sql string, heredoc bool) string {
+type Dialect uint8
+
+const (
+	MySQL Dialect = iota
+	ClickHouse
+)
+
+// Strip replaces the literals in sql with ? and cuts it to 1024 bytes.
+func Strip(sql string, d Dialect) string {
+	next := token
+	if d == ClickHouse {
+		next = chToken
+	}
 	var b strings.Builder
 	b.Grow(min(len(sql), maxSQL))
 	from := 0
 	for i := 0; i < len(sql) && i-from <= maxSQL-b.Len(); {
-		n, lit := token(sql, i, heredoc)
+		n, lit := next(sql, i)
 		if lit {
 			if !put(&b, sql[from:i]) || !put(&b, "?") {
 				return b.String()
@@ -39,7 +50,7 @@ func put(b *strings.Builder, s string) bool {
 	return false
 }
 
-func token(s string, i int, heredoc bool) (int, bool) {
+func token(s string, i int) (int, bool) {
 	c := s[i]
 	switch {
 	case c == '\'' || c == '"':
@@ -52,10 +63,6 @@ func token(s string, i int, heredoc bool) (int, bool) {
 		return 2 + through(s[i+2:], "*/"), false
 	case i > 0 && word(s[i-1]):
 		return 1, false
-	case heredoc && c == '$':
-		if n := dollar(s[i:]); n > 0 {
-			return n, true
-		}
 	case (c|0x20 == 'x' || c|0x20 == 'b') && i+1 < len(s) && s[i+1] == '\'':
 		return 1 + quoted(s[i+1:]), true
 	case c >= '0' && c <= '9':
@@ -66,6 +73,29 @@ func token(s string, i int, heredoc bool) (int, bool) {
 		return n, true
 	}
 	return 1, false
+}
+
+func chToken(s string, i int) (int, bool) {
+	c := s[i]
+	switch {
+	case c == '`':
+		return quoted(s[i:]), false
+	case c == '-' && i+1 < len(s) && s[i+1] == '-':
+		return through(s[i:], "\n"), false
+	case c == '/' && i+1 < len(s) && s[i+1] == '*':
+		return 2 + through(s[i+2:], "*/"), false
+	case c == '#':
+		if i+1 < len(s) && (s[i+1] == ' ' || s[i+1] == '!') {
+			return through(s[i:], "\n"), false
+		}
+		return 1, false
+	case c == '$':
+		if n := dollar(s[i:]); n > 0 {
+			return n, true
+		}
+		return 1, false
+	}
+	return token(s, i)
 }
 
 func through(s, end string) int {

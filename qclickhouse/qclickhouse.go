@@ -15,7 +15,8 @@ import (
 
 var sockAddr = flag.String("q_clickhouse_sock", "", "ClickHouse socket")
 
-var errNoSocket = errors.New("qclickhouse: no ClickHouse database is attached")
+// ErrNotAttached is returned by Open when the service has no ClickHouse database.
+var ErrNotAttached = errors.New("qclickhouse: no ClickHouse database is attached")
 
 // Open connects to the attached database name through the runner and pings it. The Conn traces every query.
 func Open(ctx context.Context, name string) (driver.Conn, error) {
@@ -23,7 +24,7 @@ func Open(ctx context.Context, name string) (driver.Conn, error) {
 		flag.Parse()
 	}
 	if *sockAddr == "" {
-		return nil, errNoSocket
+		return nil, ErrNotAttached
 	}
 	path := strings.TrimPrefix(*sockAddr, "unix://")
 	c, err := clickhouse.Open(&clickhouse.Options{

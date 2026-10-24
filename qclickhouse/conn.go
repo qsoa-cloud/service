@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"strconv"
+	"time"
 
 	chproto "github.com/ClickHouse/ch-go/proto"
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -22,7 +23,7 @@ type conn struct {
 
 func (c *conn) Query(ctx context.Context, query string, args ...any) (driver.Rows, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "clickhouse query")
-	rows, err := c.Conn.Query(ctx, query, args...)
+	rows, err := c.Conn.Query(driverCtx(ctx), query, args...)
 	tag(span, c.db, query, err)
 	if err != nil {
 		span.Finish()
@@ -33,7 +34,7 @@ func (c *conn) Query(ctx context.Context, query string, args ...any) (driver.Row
 
 func (c *conn) QueryRow(ctx context.Context, query string, args ...any) driver.Row {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "clickhouse query row")
-	row := c.Conn.QueryRow(ctx, query, args...)
+	row := c.Conn.QueryRow(driverCtx(ctx), query, args...)
 	tag(span, c.db, query, row.Err())
 	if row.Err() != nil {
 		span.Finish()
@@ -44,34 +45,45 @@ func (c *conn) QueryRow(ctx context.Context, query string, args ...any) driver.R
 
 func (c *conn) Select(ctx context.Context, dest any, query string, args ...any) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "clickhouse select")
-	err := c.Conn.Select(ctx, dest, query, args...)
+	err := c.Conn.Select(driverCtx(ctx), dest, query, args...)
 	end(span, c.db, query, err)
 	return err
 }
 
 func (c *conn) Exec(ctx context.Context, query string, args ...any) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "clickhouse exec")
-	err := c.Conn.Exec(ctx, query, args...)
+	err := c.Conn.Exec(driverCtx(ctx), query, args...)
 	end(span, c.db, query, err)
 	return err
 }
 
 func (c *conn) AsyncInsert(ctx context.Context, query string, wait bool, args ...any) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "clickhouse async insert")
-	err := c.Conn.AsyncInsert(ctx, query, wait, args...)
+	err := c.Conn.AsyncInsert(driverCtx(ctx), query, wait, args...)
 	end(span, c.db, query, err)
 	return err
 }
 
 func (c *conn) PrepareBatch(ctx context.Context, query string, opts ...driver.PrepareBatchOption) (driver.Batch, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "clickhouse batch")
-	b, err := c.Conn.PrepareBatch(ctx, query, opts...)
+	b, err := c.Conn.PrepareBatch(driverCtx(ctx), query, opts...)
 	tag(span, c.db, query, err)
 	if err != nil {
 		span.Finish()
 		return nil, err
 	}
 	return &tracedBatch{Batch: b, span: span}, nil
+}
+
+type noDeadline struct{ context.Context }
+
+func (noDeadline) Deadline() (time.Time, bool) { return time.Time{}, false }
+
+func driverCtx(ctx context.Context) context.Context {
+	if _, ok := ctx.Deadline(); ok {
+		return noDeadline{ctx}
+	}
+	return ctx
 }
 
 type tracedRows struct {
@@ -173,7 +185,7 @@ func end(span opentracing.Span, db, query string, err error) {
 
 func tag(span opentracing.Span, db, query string, err error) {
 	span.SetTag("db", db)
-	span.SetTag("sql", sqltext.Strip(query, true))
+	span.SetTag("sql", sqltext.Strip(query, sqltext.ClickHouse))
 	fail(span, err)
 }
 
@@ -189,5 +201,5 @@ func errText(err error) string {
 	if errors.As(err, &e) {
 		return "Code " + strconv.Itoa(int(e.Code)) + " (" + chproto.Error(e.Code).String() + ")"
 	}
-	return sqltext.Strip(err.Error(), true)
+	return sqltext.Strip(err.Error(), sqltext.ClickHouse)
 }

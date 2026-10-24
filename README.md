@@ -67,7 +67,7 @@ func main() {
 With `-q_mysql_sock` (runner passes `unix:///qcloud/mysql_proxy.sock`), `qmysql` connects through runner's MySQL proxy without a password; without it, `qmysql` keeps using `-q_mysql_addr` and `GetDsn`. `qmysql` traces every SQL call.
 
 ## ClickHouse
-`qclickhouse.Open(ctx, "events")` returns a clickhouse-go v2 `driver.Conn` for an attached ClickHouse database. It connects through runner's socket from `-q_clickhouse_sock` (runner passes `unix:///qcloud/clickhouse.sock`) without a password and pings the database; without the flag it returns an error saying no ClickHouse database is attached. The Conn traces every query, select, exec and batch.
+`qclickhouse.Open(ctx, "events")` returns a clickhouse-go v2 `driver.Conn` for an attached ClickHouse database. It connects through runner's socket from `-q_clickhouse_sock` (runner passes `unix:///qcloud/clickhouse.sock`) without a password and pings the database; without the flag it returns `qclickhouse.ErrNotAttached`. The Conn traces every query, select, exec and batch. A context deadline cancels the query but is not sent to ClickHouse as `max_execution_time`.
 
 ## Outbound HTTP
 Importing the library makes `http.DefaultClient` trace outbound requests. For another client, `qhttp.Transport()` wraps the current `http.DefaultTransport` with a span per request:
