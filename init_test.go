@@ -8,6 +8,7 @@ import (
 
 	"gopkg.qsoa.cloud/grpccodec"
 	"gopkg.qsoa.cloud/grpccodec/inittest"
+	_ "gopkg.qsoa.cloud/service/qclickhouse"
 	_ "gopkg.qsoa.cloud/service/qdfs"
 	_ "gopkg.qsoa.cloud/service/qemail"
 	_ "gopkg.qsoa.cloud/service/qmysql"
