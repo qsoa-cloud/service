@@ -67,7 +67,14 @@ func main() {
 With `-q_mysql_sock` (runner passes `unix:///qcloud/mysql_proxy.sock`), `qmysql` connects through runner's MySQL proxy without a password; without it, `qmysql` keeps using `-q_mysql_addr` and `GetDsn`. `qmysql` traces every SQL call.
 
 ## ClickHouse
-`qclickhouse.Open(ctx, "events")` returns a clickhouse-go v2 `driver.Conn` for an attached ClickHouse database. It connects through runner's socket from `-q_clickhouse_sock` (runner passes `unix:///qcloud/clickhouse.sock`) without a password and pings the database; without the flag it returns `qclickhouse.ErrNotAttached`. The Conn traces every query, select, exec and batch. A context deadline cancels the query but is not sent to ClickHouse as `max_execution_time`.
+`qclickhouse.Open(ctx, "events")` returns a clickhouse-go v2 `driver.Conn` for an attached ClickHouse database; `qclickhouse.Open(ctx, "")` opens the service's only attached database. It connects through runner's socket from `-q_clickhouse_sock` (runner passes `unix:///qcloud/clickhouse.sock`) without a password and pings the database; without the flag it returns `qclickhouse.ErrNotAttached`. A service gets the flag from its next deploy into an env that one of its attached databases is linked to. A database that is not attached gets exception 81 (`UNKNOWN_DATABASE`), and detaching applies from the next connection. The Conn traces every query, select, exec and batch. Queries run under the platform's limits: one that sets `max_memory_usage`, `max_execution_time` or `max_concurrent_queries_for_user` gets exception 452. A context deadline cancels the query but is not sent to ClickHouse as `max_execution_time`.
+```go
+conn, err := qclickhouse.Open(ctx, "events")
+if err != nil {
+	log.Fatalf("Cannot open ClickHouse database: %v", err)
+}
+defer conn.Close()
+```
 
 ## Outbound HTTP
 Importing the library makes `http.DefaultClient` trace outbound requests. For another client, `qhttp.Transport()` wraps the current `http.DefaultTransport` with a span per request:
