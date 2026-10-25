@@ -19,6 +19,8 @@ var sockAddr = flag.String("q_clickhouse_sock", "", "ClickHouse socket")
 var ErrNotAttached = errors.New("qclickhouse: no ClickHouse database is attached")
 
 // Open connects to the attached database name through the runner and pings it. The Conn traces every query.
+// An empty name opens the service's only attached database.
+// Context deadlines cancel queries but are not sent to ClickHouse as max_execution_time.
 func Open(ctx context.Context, name string) (driver.Conn, error) {
 	if !flag.Parsed() {
 		flag.Parse()
@@ -38,7 +40,10 @@ func Open(ctx context.Context, name string) (driver.Conn, error) {
 	}
 	if err := c.Ping(ctx); err != nil {
 		c.Close()
-		return nil, fmt.Errorf("qclickhouse: %s: %w", name, err)
+		if name != "" {
+			err = fmt.Errorf("%s: %w", name, err)
+		}
+		return nil, fmt.Errorf("qclickhouse: %w", err)
 	}
 	return &conn{Conn: c, db: name}, nil
 }

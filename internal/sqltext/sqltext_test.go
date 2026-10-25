@@ -21,6 +21,7 @@ func TestStripDialects(t *testing.T) {
 		"SELECT 1 /* a /* b */ don't */ WHERE p = 'hunter2'": "SELECT ? /* a /* b */ don't */ WHERE p = ?",
 		"SELECT 1 /*/ it's */ WHERE p = 'hunter2'":           "SELECT ? /*/ it's */ WHERE p = ?",
 		"SELECT 1 /* a /* b */ it's":                         "SELECT ? /* a /* b */ it's",
+		`SELECT "col" FROM t WHERE p = 'x'`:                  `SELECT "col" FROM t WHERE p = ?`,
 	} {
 		if got := Strip(in, ClickHouse); got != want {
 			t.Errorf("ClickHouse %q: %q, want %q", in, got, want)
@@ -30,5 +31,8 @@ func TestStripDialects(t *testing.T) {
 		if got := Strip(in, MySQL); got != in {
 			t.Errorf("MySQL %q: %q", in, got)
 		}
+	}
+	if got := Strip(`SELECT "col" FROM t WHERE p = 'x'`, MySQL); got != "SELECT ? FROM t WHERE p = ?" {
+		t.Errorf("MySQL double quotes: %q", got)
 	}
 }

@@ -152,6 +152,19 @@ func TestOpenUnknownDatabase(t *testing.T) {
 	}
 }
 
+func TestOpenErrorText(t *testing.T) {
+	fakeProxy(t, true)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	for name, prefix := range map[string]string{"orders": "qclickhouse: orders: ", "": "qclickhouse: "} {
+		_, err := Open(ctx, name)
+		var e *clickhouse.Exception
+		if !errors.As(err, &e) || err.Error() != prefix+e.Error() {
+			t.Errorf("Open(%q): %v", name, err)
+		}
+	}
+}
+
 var (
 	errUnknownTable = &clickhouse.Exception{Code: 60, Name: "DB::Exception", Message: "Table orders.hunter2 does not exist"}
 	errBoom         = fmt.Errorf("cannot parse 'hunter2': %w", errors.New("boom"))

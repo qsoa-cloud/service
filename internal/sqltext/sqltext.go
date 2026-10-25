@@ -78,7 +78,7 @@ func token(s string, i int) (int, bool) {
 func chToken(s string, i int) (int, bool) {
 	c := s[i]
 	switch {
-	case c == '`':
+	case c == '`' || c == '"':
 		return quoted(s[i:]), false
 	case (c == '-' || c == '/') && i+1 < len(s) && s[i+1] == c:
 		return through(s[i:], "\n"), false
