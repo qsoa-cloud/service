@@ -12,6 +12,8 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/log"
+
+	"gopkg.qsoa.cloud/service/internal/errtext"
 )
 
 type tracedConnector struct {
@@ -350,10 +352,16 @@ func fail(span opentracing.Span, err error) {
 	}
 }
 
+var constErrs = []error{
+	driver.ErrBadConn, sql.ErrTxDone, sql.ErrConnDone,
+	mysql.ErrInvalidConn, mysql.ErrMalformPkt, mysql.ErrNoTLS, mysql.ErrCleartextPassword, mysql.ErrNativePassword, mysql.ErrOldPassword,
+	mysql.ErrUnknownPlugin, mysql.ErrOldProtocol, mysql.ErrPktSync, mysql.ErrPktSyncMul, mysql.ErrPktTooLarge, mysql.ErrBusyBuffer,
+}
+
 func errText(err error) string {
 	var me *mysql.MySQLError
 	if !errors.As(err, &me) {
-		return stripLiterals(err.Error())
+		return errtext.Text(err, constErrs)
 	}
 	s := "Error " + strconv.Itoa(int(me.Number))
 	if me.SQLState != [5]byte{} {

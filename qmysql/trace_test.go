@@ -8,12 +8,17 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"net"
+	"os"
 	"reflect"
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/opentracing/opentracing-go"
@@ -352,7 +357,97 @@ func TestTraceErrorText(t *testing.T) {
 	if strings.Contains(out, "hunter2") {
 		t.Errorf("data in span: %s", out)
 	}
-	for _, want := range []string{`"v":"Error 1064 (42000)"`, `"v":"Error 1062"`, `"v":"local file ? is not registered"`} {
+	for _, want := range []string{`"v":"Error 1064 (42000)"`, `"v":"Error 1062"`, `"v":"*errors.errorString"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("no %s in %s", want, out)
+		}
+	}
+}
+
+func TestErrText(t *testing.T) {
+	addr := &net.UnixAddr{Name: "/hunter2.sock", Net: "unix"}
+	cases := []struct {
+		err  error
+		want string
+	}{
+		{&mysql.MySQLError{Number: 1062, SQLState: [5]byte{'2', '3', '0', '0', '0'}, Message: "Duplicate entry 'hunter2's secret' for key 't.PRIMARY'"}, "Error 1062 (23000)"},
+		{fmt.Errorf("'hunter2': %w", &mysql.MySQLError{Number: 1406, SQLState: [5]byte{'2', '2', '0', '0', '1'}, Message: `Data too long 'hun" ter2'`}), "Error 1406 (22001)"},
+		{&mysql.MySQLError{Number: 1062, Message: "Duplicate entry 'hunter2'"}, "Error 1062"},
+		{&net.OpError{Op: "dial", Net: "unix", Addr: addr, Err: os.NewSyscallError("connect", syscall.ECONNREFUSED)}, "dial: connection refused"},
+		{fmt.Errorf("'hunter2': %w", &net.OpError{Op: "read", Net: "unix", Addr: addr, Err: errors.New("hunter2")}), "read"},
+		{errInfile, "*errors.errorString"},
+		{fmt.Errorf("'hunter2': %w", errors.New("hunter2")), "*fmt.wrapError"},
+	}
+	for _, e := range []error{
+		driver.ErrBadConn, sql.ErrTxDone, sql.ErrConnDone, sql.ErrNoRows,
+		context.Canceled, context.DeadlineExceeded, io.EOF, io.ErrUnexpectedEOF,
+		mysql.ErrInvalidConn, mysql.ErrMalformPkt, mysql.ErrNoTLS, mysql.ErrCleartextPassword, mysql.ErrNativePassword, mysql.ErrOldPassword,
+		mysql.ErrUnknownPlugin, mysql.ErrOldProtocol, mysql.ErrPktSync, mysql.ErrPktSyncMul, mysql.ErrPktTooLarge, mysql.ErrBusyBuffer,
+	} {
+		cases = append(cases, struct {
+			err  error
+			want string
+		}{fmt.Errorf("'hunter2': %w", e), e.Error()})
+	}
+	for _, c := range cases {
+		got := errText(c.err)
+		if got != c.want || strings.Contains(got, "hunter2") || strings.Contains(got, "secret") || strings.Contains(got, "ter2") {
+			t.Errorf("errText(%q) = %q, want %q", c.err, got, c.want)
+		}
+	}
+}
+
+func TestServerErrorNotTraced(t *testing.T) {
+	dsn := os.Getenv("QSOA_TEST_MYSQL_DSN")
+	if dsn == "" {
+		t.Skip("QSOA_TEST_MYSQL_DSN is not set")
+	}
+	cfg, err := mysql.ParseDSN(dsn)
+	if err != nil {
+		t.Fatal("cannot parse QSOA_TEST_MYSQL_DSN")
+	}
+	admin := sql.OpenDB(must(mysql.NewConnector(cfg)))
+	t.Cleanup(func() { admin.Close() })
+	name := fmt.Sprintf("qmysql_test_%d", time.Now().UnixNano())
+	t.Cleanup(func() { admin.Exec("DROP DATABASE IF EXISTS " + name) })
+	for _, q := range []string{"CREATE DATABASE " + name, "CREATE TABLE " + name + ".t (v VARCHAR(32) PRIMARY KEY, c VARCHAR(4))"} {
+		if _, err := admin.Exec(q); err != nil {
+			t.Fatalf("setup: %s", errText(err))
+		}
+	}
+	cfg.DBName = name
+	if cfg.Params == nil {
+		cfg.Params = map[string]string{}
+	}
+	cfg.Params["sql_mode"] = "'STRICT_ALL_TABLES'"
+	db := sql.OpenDB(&tracedConnector{base: must(mysql.NewConnector(cfg)), db: name})
+	t.Cleanup(func() { db.Close() })
+	ctx := context.Background()
+	if _, err := db.ExecContext(ctx, "INSERT INTO t (v) VALUES (?)", "hunter2's secret"); err != nil {
+		t.Fatalf("setup: %s", errText(err))
+	}
+	buf := traced(t)
+	for _, c := range []struct {
+		query string
+		args  []any
+		num   uint16
+		text  string
+	}{
+		{"INSERT INTO t (v) VALUES (?)", []any{"hunter2's secret"}, 1062, "Error 1062 (23000): Duplicate entry 'hunter2's secret' for key "},
+		{"INSERT INTO t (v, c) VALUES (?, ?)", []any{"x", `hun" ter2`}, 1406, "Error 1406 (22001): Data too long for column 'c'"},
+	} {
+		_, err := db.ExecContext(ctx, c.query, c.args...)
+		if me, ok := err.(*mysql.MySQLError); !ok || me.Number != c.num || !strings.HasPrefix(err.Error(), c.text) {
+			t.Errorf("%s: %v", c.query, err)
+		}
+	}
+	out := buf.String()
+	for _, s := range []string{"hunter2", "secret", "ter2"} {
+		if strings.Contains(out, s) {
+			t.Errorf("%q in span: %s", s, out)
+		}
+	}
+	for _, want := range []string{`"v":"Error 1062 (23000)"`, `"v":"Error 1406 (22001)"`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("no %s in %s", want, out)
 		}

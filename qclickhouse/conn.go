@@ -4,12 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
-	"io"
-	"net"
 	"regexp"
 	"strconv"
-	"syscall"
 	"time"
 
 	chproto "github.com/ClickHouse/ch-go/proto"
@@ -19,6 +15,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/log"
 
+	"gopkg.qsoa.cloud/service/internal/errtext"
 	"gopkg.qsoa.cloud/service/internal/sqltext"
 )
 
@@ -205,7 +202,6 @@ func fail(span opentracing.Span, err error) {
 var ident = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 var constErrs = []error{
-	context.Canceled, context.DeadlineExceeded, io.EOF, io.ErrUnexpectedEOF, sql.ErrNoRows,
 	clickhouse.ErrBatchAlreadySent, clickhouse.ErrBatchNotSent, clickhouse.ErrAcquireConnTimeout,
 	clickhouse.ErrUnsupportedServerRevision, clickhouse.ErrBindMixedParamsFormats, clickhouse.ErrAcquireConnNoAddress,
 	clickhouse.ErrServerUnexpectedData, clickhouse.ErrConnectionClosed, clickhouse.ErrClusterSecretRequiresName,
@@ -216,12 +212,10 @@ var constErrs = []error{
 
 func errText(err error) string {
 	var (
-		e     *clickhouse.Exception
-		op    *clickhouse.OpError
-		conv  *column.ColumnConverterError
-		ut    *column.UnsupportedColumnTypeError
-		ne    *net.OpError
-		errno syscall.Errno
+		e    *clickhouse.Exception
+		op   *clickhouse.OpError
+		conv *column.ColumnConverterError
+		ut   *column.UnsupportedColumnTypeError
 	)
 	switch {
 	case errors.As(err, &e):
@@ -242,16 +236,5 @@ func errText(err error) string {
 	case errors.As(err, &ut):
 		return "unsupported column type"
 	}
-	for _, c := range constErrs {
-		if errors.Is(err, c) {
-			return c.Error()
-		}
-	}
-	if errors.As(err, &ne) {
-		if errors.As(ne.Err, &errno) {
-			return ne.Op + ": " + errno.Error()
-		}
-		return ne.Op
-	}
-	return fmt.Sprintf("%T", err)
+	return errtext.Text(err, constErrs)
 }
