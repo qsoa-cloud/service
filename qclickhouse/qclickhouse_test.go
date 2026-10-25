@@ -448,7 +448,8 @@ func TestErrText(t *testing.T) {
 	}{
 		{fmt.Errorf("'hunter2': %w", errUnknownTable), "Code 60 (UNKNOWN_TABLE)"},
 		{fmt.Errorf("%w: %w", clickhouse.ErrBatchInvalid, &clickhouse.OpError{Op: "hunter2"}), "batch is invalid"},
-		{fmt.Errorf("'hunter2': %w", &clickhouse.OpError{Op: "ScanRow", ColumnName: "p", Err: errors.New("hunter2")}), "clickhouse [ScanRow]: p"},
+		{&clickhouse.OpError{ColumnName: "'hunter2'", Err: &column.ColumnConverterError{Op: "ScanRow", From: "String", To: "*uint64"}}, "converting String to *uint64 is unsupported"},
+		{fmt.Errorf("'hunter2': %w", &clickhouse.OpError{Op: "ScanStruct", ColumnName: "p", Err: errors.New("hunter2")}), "clickhouse [ScanStruct]: p: *errors.errorString"},
 		{fmt.Errorf("'hunter2': %w", &column.ColumnConverterError{Op: "AppendRow", From: "string", To: "Decimal(10, 2)", Hint: "hunter2"}), "converting string to Decimal(10, 2) is unsupported"},
 		{fmt.Errorf("'hunter2': %w", &column.UnsupportedColumnTypeError{}), "unsupported column type"},
 		{fmt.Errorf("'hunter2': %w", context.Canceled), "context canceled"},
@@ -461,7 +462,7 @@ func TestErrText(t *testing.T) {
 		{&net.OpError{Op: "read", Net: "unix", Addr: addr, Err: errors.New("hunter2")}, "read"},
 		{errBoom, "*fmt.wrapError"},
 	} {
-		if got := errText(c.err); got != c.want {
+		if got := errText(c.err); got != c.want || strings.Contains(got, "hunter2") {
 			t.Errorf("errText(%q) = %q, want %q", c.err, got, c.want)
 		}
 	}
@@ -667,6 +668,28 @@ func TestBatchValueNotTraced(t *testing.T) {
 				t.Errorf("%s %q: spans: %s", table, v, out)
 			}
 		}
+	}
+}
+
+func TestScanLiteralNotTraced(t *testing.T) {
+	base, _ := clickhouseTest(t)
+	buf := traced(t)
+	ctx := context.Background()
+	c := &conn{Conn: base, db: "orders"}
+	var n uint64
+	if err := c.QueryRow(ctx, "SELECT 'hunter2'").Scan(&n); err == nil {
+		t.Fatal("query row: a String was scanned into a uint64")
+	}
+	var dest []struct {
+		V uint64 `ch:"'hunter2'"`
+	}
+	if err := c.Select(ctx, &dest, "SELECT 'hunter2'"); err == nil {
+		t.Fatal("select: a String was scanned into a uint64")
+	}
+	out := buf.String()
+	got := spans(t, bytes.NewBufferString(out))
+	if strings.Contains(out, "hunter2") || len(got) != 2 || strings.Count(out, `"v":"converting String to *uint64 is unsupported"`) != 2 {
+		t.Errorf("spans: %s", out)
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"regexp"
 	"strconv"
 	"syscall"
 	"time"
@@ -201,6 +202,8 @@ func fail(span opentracing.Span, err error) {
 	}
 }
 
+var ident = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
 var constErrs = []error{
 	context.Canceled, context.DeadlineExceeded, io.EOF, io.ErrUnexpectedEOF, sql.ErrNoRows,
 	clickhouse.ErrBatchAlreadySent, clickhouse.ErrBatchNotSent, clickhouse.ErrAcquireConnTimeout,
@@ -226,7 +229,14 @@ func errText(err error) string {
 	case errors.Is(err, clickhouse.ErrBatchInvalid):
 		return "batch is invalid"
 	case errors.As(err, &op):
-		return "clickhouse [" + op.Op + "]: " + op.ColumnName
+		s := errText(op.Err)
+		if ident.MatchString(op.ColumnName) {
+			s = op.ColumnName + ": " + s
+		}
+		if op.Op != "" {
+			s = "clickhouse [" + op.Op + "]: " + s
+		}
+		return s
 	case errors.As(err, &conv):
 		return "converting " + conv.From + " to " + conv.To + " is unsupported"
 	case errors.As(err, &ut):
