@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -15,11 +16,13 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
 	chproto "github.com/ClickHouse/ch-go/proto"
 	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/ClickHouse/clickhouse-go/v2/lib/column"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/opentracing/opentracing-go"
 
@@ -408,7 +411,7 @@ func TestSpanErrors(t *testing.T) {
 	if strings.Contains(out, "hunter2") || strings.Contains(out, "does not exist") {
 		t.Errorf("data in span: %s", out)
 	}
-	for _, want := range []string{`"v":"Code 60 (UNKNOWN_TABLE)"`, `"v":"cannot parse ?: boom"`} {
+	for _, want := range []string{`"v":"Code 60 (UNKNOWN_TABLE)"`, `"v":"*fmt.wrapError"`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("no %s in %s", want, out)
 		}
@@ -420,6 +423,32 @@ func TestSpanErrors(t *testing.T) {
 	for _, s := range got {
 		if _, ok := s.T["error"]; !ok {
 			t.Errorf("%s: no error tag: %v", s.O, s.T)
+		}
+	}
+}
+
+func TestErrText(t *testing.T) {
+	addr := &net.UnixAddr{Name: "/hunter2.sock", Net: "unix"}
+	for _, c := range []struct {
+		err  error
+		want string
+	}{
+		{fmt.Errorf("'hunter2': %w", errUnknownTable), "Code 60 (UNKNOWN_TABLE)"},
+		{fmt.Errorf("%w: %w", clickhouse.ErrBatchInvalid, &clickhouse.OpError{Op: "hunter2"}), "batch is invalid"},
+		{fmt.Errorf("'hunter2': %w", &clickhouse.OpError{Op: "ScanRow", ColumnName: "p", Err: errors.New("hunter2")}), "clickhouse [ScanRow]: p"},
+		{fmt.Errorf("'hunter2': %w", &column.ColumnConverterError{Op: "AppendRow", From: "string", To: "Decimal(10, 2)", Hint: "hunter2"}), "converting string to Decimal(10, 2) is unsupported"},
+		{fmt.Errorf("'hunter2': %w", &column.UnsupportedColumnTypeError{}), "unsupported column type"},
+		{fmt.Errorf("'hunter2': %w", context.Canceled), "context canceled"},
+		{fmt.Errorf("'hunter2': %w", context.DeadlineExceeded), "context deadline exceeded"},
+		{fmt.Errorf("'hunter2': %w", io.EOF), "EOF"},
+		{fmt.Errorf("'hunter2': %w", io.ErrUnexpectedEOF), "unexpected EOF"},
+		{fmt.Errorf("'hunter2': %w", sql.ErrNoRows), "sql: no rows in result set"},
+		{&net.OpError{Op: "dial", Net: "unix", Addr: addr, Err: os.NewSyscallError("connect", syscall.ECONNREFUSED)}, "dial: connection refused"},
+		{&net.OpError{Op: "read", Net: "unix", Addr: addr, Err: errors.New("hunter2")}, "read"},
+		{errBoom, "*fmt.wrapError"},
+	} {
+		if got := errText(c.err); got != c.want {
+			t.Errorf("errText(%q) = %q, want %q", c.err, got, c.want)
 		}
 	}
 }
@@ -587,6 +616,43 @@ func TestClickHouseSpans(t *testing.T) {
 	}
 	if got[1].T["rows"] != 3.0 || got[2].T["rows"] != 2.0 {
 		t.Errorf("rows %v, %v", got[1].T["rows"], got[2].T["rows"])
+	}
+}
+
+func TestBatchValueNotTraced(t *testing.T) {
+	base, _ := clickhouseTest(t)
+	ctx := context.Background()
+	db := fmt.Sprintf("qclickhouse_test_%d", time.Now().UnixNano())
+	if err := base.Exec(ctx, "CREATE DATABASE "+db); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { base.Exec(context.Background(), "DROP DATABASE IF EXISTS "+db) })
+	for _, q := range []string{
+		"CREATE TABLE " + db + ".d (x Decimal(10, 2)) ENGINE = Memory",
+		"CREATE TABLE " + db + ".v (x Variant(UInt64, Int32)) ENGINE = Memory",
+	} {
+		if err := base.Exec(ctx, q); err != nil {
+			t.Fatalf("setup: %s", errText(err))
+		}
+	}
+	c := &conn{Conn: base, db: db}
+	for _, table := range []string{"d", "v"} {
+		for _, v := range []string{"hunter2's secret", `hun" ter2`} {
+			buf := traced(t)
+			b := must(c.PrepareBatch(ctx, "INSERT INTO "+db+"."+table))
+			if b.Append(v) == nil || b.Send() == nil {
+				t.Fatalf("%s: %q was accepted", table, v)
+			}
+			out := buf.String()
+			for _, w := range []string{"hunter2", "secret", "ter2"} {
+				if strings.Contains(out, w) {
+					t.Errorf("%s %q: %q in span: %s", table, v, w, out)
+				}
+			}
+			if !strings.Contains(out, `"v":"batch is invalid"`) {
+				t.Errorf("%s %q: spans: %s", table, v, out)
+			}
+		}
 	}
 }
 

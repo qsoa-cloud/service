@@ -4,11 +4,16 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"io"
+	"net"
 	"strconv"
+	"syscall"
 	"time"
 
 	chproto "github.com/ClickHouse/ch-go/proto"
 	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/ClickHouse/clickhouse-go/v2/lib/column"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/log"
@@ -196,10 +201,39 @@ func fail(span opentracing.Span, err error) {
 	}
 }
 
+var constErrs = []error{context.Canceled, context.DeadlineExceeded, io.EOF, io.ErrUnexpectedEOF, sql.ErrNoRows}
+
 func errText(err error) string {
-	var e *clickhouse.Exception
-	if errors.As(err, &e) {
+	var (
+		e     *clickhouse.Exception
+		op    *clickhouse.OpError
+		conv  *column.ColumnConverterError
+		ut    *column.UnsupportedColumnTypeError
+		ne    *net.OpError
+		errno syscall.Errno
+	)
+	switch {
+	case errors.As(err, &e):
 		return "Code " + strconv.Itoa(int(e.Code)) + " (" + chproto.Error(e.Code).String() + ")"
+	case errors.Is(err, clickhouse.ErrBatchInvalid):
+		return "batch is invalid"
+	case errors.As(err, &op):
+		return "clickhouse [" + op.Op + "]: " + op.ColumnName
+	case errors.As(err, &conv):
+		return "converting " + conv.From + " to " + conv.To + " is unsupported"
+	case errors.As(err, &ut):
+		return "unsupported column type"
 	}
-	return sqltext.Strip(err.Error(), sqltext.ClickHouse)
+	for _, c := range constErrs {
+		if errors.Is(err, c) {
+			return c.Error()
+		}
+	}
+	if errors.As(err, &ne) {
+		if errors.As(ne.Err, &errno) {
+			return ne.Op + ": " + errno.Error()
+		}
+		return ne.Op
+	}
+	return fmt.Sprintf("%T", err)
 }
