@@ -380,6 +380,7 @@ func TestErrText(t *testing.T) {
 	}
 	for _, e := range []error{
 		driver.ErrBadConn, sql.ErrTxDone, sql.ErrConnDone, sql.ErrNoRows,
+		errIsolation, errReadOnly, errNamed,
 		context.Canceled, context.DeadlineExceeded, io.EOF, io.ErrUnexpectedEOF,
 		mysql.ErrInvalidConn, mysql.ErrMalformPkt, mysql.ErrNoTLS, mysql.ErrCleartextPassword, mysql.ErrNativePassword, mysql.ErrOldPassword,
 		mysql.ErrUnknownPlugin, mysql.ErrOldProtocol, mysql.ErrPktSync, mysql.ErrPktSyncMul, mysql.ErrPktTooLarge, mysql.ErrBusyBuffer,

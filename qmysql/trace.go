@@ -16,6 +16,12 @@ import (
 	"gopkg.qsoa.cloud/service/internal/errtext"
 )
 
+var (
+	errIsolation = errors.New("sql: driver does not support non-default isolation level")
+	errReadOnly  = errors.New("sql: driver does not support read-only transactions")
+	errNamed     = errors.New("sql: driver does not support the use of Named Parameters")
+)
+
 type tracedConnector struct {
 	base driver.Connector
 	drv  driver.Driver
@@ -62,10 +68,10 @@ func (c *tracedConn) begin(ctx context.Context, opts driver.TxOptions) (driver.T
 		return b.BeginTx(ctx, opts)
 	}
 	if opts.Isolation != driver.IsolationLevel(sql.LevelDefault) {
-		return nil, errors.New("sql: driver does not support non-default isolation level")
+		return nil, errIsolation
 	}
 	if opts.ReadOnly {
-		return nil, errors.New("sql: driver does not support read-only transactions")
+		return nil, errReadOnly
 	}
 	tx, err := c.conn.Begin()
 	if err == nil && ctx.Err() != nil {
@@ -200,7 +206,7 @@ func values(ctx context.Context, named []driver.NamedValue) ([]driver.Value, err
 	v := make([]driver.Value, len(named))
 	for i, p := range named {
 		if p.Name != "" {
-			return nil, errors.New("sql: driver does not support the use of Named Parameters")
+			return nil, errNamed
 		}
 		v[i] = p.Value
 	}
@@ -353,7 +359,7 @@ func fail(span opentracing.Span, err error) {
 }
 
 var constErrs = []error{
-	driver.ErrBadConn, sql.ErrTxDone, sql.ErrConnDone,
+	errIsolation, errReadOnly, errNamed, driver.ErrBadConn, sql.ErrTxDone, sql.ErrConnDone,
 	mysql.ErrInvalidConn, mysql.ErrMalformPkt, mysql.ErrNoTLS, mysql.ErrCleartextPassword, mysql.ErrNativePassword, mysql.ErrOldPassword,
 	mysql.ErrUnknownPlugin, mysql.ErrOldProtocol, mysql.ErrPktSync, mysql.ErrPktSyncMul, mysql.ErrPktTooLarge, mysql.ErrBusyBuffer,
 }
