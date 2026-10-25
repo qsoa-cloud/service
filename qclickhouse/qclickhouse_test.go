@@ -456,6 +456,7 @@ func TestErrText(t *testing.T) {
 		{fmt.Errorf("'hunter2': %w", io.EOF), "EOF"},
 		{fmt.Errorf("'hunter2': %w", io.ErrUnexpectedEOF), "unexpected EOF"},
 		{fmt.Errorf("'hunter2': %w", sql.ErrNoRows), "sql: no rows in result set"},
+		{fmt.Errorf("'hunter2': %w", clickhouse.ErrConnectionClosed), "clickhouse: connection is closed"},
 		{&net.OpError{Op: "dial", Net: "unix", Addr: addr, Err: os.NewSyscallError("connect", syscall.ECONNREFUSED)}, "dial: connection refused"},
 		{&net.OpError{Op: "read", Net: "unix", Addr: addr, Err: errors.New("hunter2")}, "read"},
 		{errBoom, "*fmt.wrapError"},

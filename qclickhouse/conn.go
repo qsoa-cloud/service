@@ -201,7 +201,15 @@ func fail(span opentracing.Span, err error) {
 	}
 }
 
-var constErrs = []error{context.Canceled, context.DeadlineExceeded, io.EOF, io.ErrUnexpectedEOF, sql.ErrNoRows}
+var constErrs = []error{
+	context.Canceled, context.DeadlineExceeded, io.EOF, io.ErrUnexpectedEOF, sql.ErrNoRows,
+	clickhouse.ErrBatchAlreadySent, clickhouse.ErrBatchNotSent, clickhouse.ErrAcquireConnTimeout,
+	clickhouse.ErrUnsupportedServerRevision, clickhouse.ErrBindMixedParamsFormats, clickhouse.ErrAcquireConnNoAddress,
+	clickhouse.ErrServerUnexpectedData, clickhouse.ErrConnectionClosed, clickhouse.ErrClusterSecretRequiresName,
+	clickhouse.ErrClusterSecretNeedsNative, clickhouse.ErrClusterSecretRequiresUsername, clickhouse.ErrClusterSecretWithJWT,
+	clickhouse.ErrFormatNativeUnsupported, clickhouse.ErrInvalidValueInNamedDateValue, clickhouse.ErrUnsupportedQueryParameter,
+	clickhouse.ErrInvalidTimezone,
+}
 
 func errText(err error) string {
 	var (
